@@ -6,51 +6,414 @@
     <title>Stock Forecasting Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.tailwindcss.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;800&display=swap">
     <style>
-        .card { @apply bg-white rounded-lg shadow-lg p-6 mb-6; }
-        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all transform hover:scale-105; }
-        .btn-secondary { @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium transition-colors; }
-        .btn-success { @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium transition-colors; }
-        .btn-export { @apply bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors; }
-        .status-ok { @apply bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium; }
-        .status-warning { @apply bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium; }
-        .status-urgent { @apply bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium; }
-        .status-critical { @apply bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium; }
-        .loading { @apply opacity-50 pointer-events-none; }
+        :root {
+            /* Onebed Colors */
+            --color-navy: #2A2660;
+            --color-navy-2: #474195;
+            --color-navy-3: #554FB0;
+            --color-navy-4: #635CCA;
+            --color-navy-accent: #8C9EFF;
+            --color-accent-1: #FFCD83;
+            --color-accent-2: #FF5252;
+            --color-text-navy: #2A2660;
+            --color-text-body: #707074;
+            --color-text-body-light: #B0B0B5;
+            --color-text-accent: #8C9EFF;
+            --color-text-white-overlay: rgba(255, 255, 255, 0.6);
+            --color-background: #F5F4F6;
+            
+            /* Typography */
+            --font-family: 'Montserrat', sans-serif;
+            --font-weight-regular: 400;
+            --font-weight-extrabold: 800;
+            
+            /* Shadows */
+            --shadow-default: 0 2px 4px rgba(38, 50, 56, 0.32);
+            
+            /* Gradients */
+            --gradient-navy-to-navy2: linear-gradient(135deg, #2A2660, #474195);
+            --gradient-navy3-to-accent: linear-gradient(135deg, #554FB0, #8C9EFF);
+        }
+
+        body {
+            font-family: var(--font-family);
+            font-weight: var(--font-weight-regular);
+            background-color: var(--color-background);
+            color: var(--color-text-body);
+        }
+
+        /* Typography Styles - Following Onebed Style Guide Exactly */
+        h1, .h1 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 56px;
+            line-height: 1.1; /* 110% */
+            text-transform: capitalize;
+            color: var(--color-navy);
+        }
+        
+        @media (max-width: 991px) {
+            h1, .h1 {
+                font-size: 40px;
+            }
+        }
+
+        h2, .h2 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 32px;
+            line-height: 1.2; /* 120% */
+            color: var(--color-navy);
+        }
+
+        @media (max-width: 991px) {
+            h2, .h2 {
+                font-size: 24px;
+            }
+        }
+
+        h3, .h3 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 16px;
+            line-height: 1.2; /* 120% */
+            color: var(--color-navy);
+        }
+
+        h4, .h4 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 14px;
+            line-height: 1; /* 100% */
+            text-transform: uppercase;
+            color: var(--color-navy);
+        }
+
+        p, .paragraph {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 16px;
+            line-height: 1.5; /* 150% */
+        }
+
+        .caption {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 14px;
+            line-height: 1.45; /* 145% */
+        }
+
+        button, .button {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+
+        /* Component Styles */
+        .card { 
+            background: white;
+            border-radius: 12px;
+            box-shadow: var(--shadow-default);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        
+        .btn-primary { 
+            background: var(--gradient-navy-to-navy2);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-default);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(42, 38, 96, 0.4);
+        }
+        
+        .btn-secondary { 
+            background: var(--color-navy-3);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: var(--color-navy-4);
+        }
+        
+        .btn-success { 
+            background: #4CAF50;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-export { 
+            background: var(--color-navy-accent);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .status-ok { 
+            background: rgba(76, 175, 80, 0.1);
+            color: #2E7D32;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+        
+        .status-warning { 
+            background: rgba(255, 205, 131, 0.3);
+            color: #E65100;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+        
+        .status-urgent { 
+            background: rgba(255, 82, 82, 0.2);
+            color: var(--color-accent-2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+        
+        .status-critical { 
+            background: rgba(255, 82, 82, 0.3);
+            color: var(--color-accent-2);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+        
+        .loading { 
+            opacity: 0.6;
+            pointer-events: none;
+        }
         
         /* Enhanced table styling */
         .data-table {
-            @apply w-full border-collapse;
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--font-family);
         }
+        
         .data-table thead {
-            @apply bg-gray-50 border-b-2 border-gray-200;
+            background: var(--color-navy);
+            border-bottom: 2px solid var(--color-navy-2);
         }
+        
         .data-table th {
-            @apply px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider;
+            padding: 16px;
+            text-align: left;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            color: white;
+            text-transform: uppercase;
         }
+        
         .data-table tbody tr {
-            @apply border-b border-gray-200 hover:bg-gray-50 transition-colors;
+            border-bottom: 1px solid rgba(42, 38, 96, 0.1);
+            transition: background-color 0.2s ease;
         }
+        
+        .data-table tbody tr:hover {
+            background-color: rgba(140, 158, 255, 0.05);
+        }
+        
         .data-table td {
-            @apply px-4 py-3 text-sm text-gray-900;
+            padding: 12px 16px;
+            font-size: 14px;
+            color: var(--color-text-body);
+            font-weight: 400;
         }
+        
         .metric-value {
-            @apply font-mono text-right;
+            font-family: var(--font-family);
+            font-weight: 800;
+            text-align: right;
+            color: var(--color-navy);
         }
+        
         .highlight-critical {
-            @apply bg-red-50 font-semibold;
+            background: rgba(255, 82, 82, 0.1);
+            font-weight: 800;
         }
+        
         .highlight-warning {
-            @apply bg-yellow-50;
+            background: rgba(255, 205, 131, 0.1);
         }
+        
         .highlight-ok {
-            @apply bg-green-50;
+            background: rgba(76, 175, 80, 0.05);
+        }
+
+        /* Navigation Styles */
+        nav {
+            background: white;
+            box-shadow: var(--shadow-default);
+            border-bottom: 1px solid rgba(42, 38, 96, 0.1);
+        }
+
+        nav h1 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 20px;
+            line-height: 1.2; /* 120% */
+            color: var(--color-navy);
+        }
+
+        nav a {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        nav a:first-of-type {
+            background: var(--gradient-navy-to-navy2);
+            color: white;
+        }
+
+        nav a:not(:first-of-type) {
+            color: var(--color-text-body);
+        }
+
+        nav a:not(:first-of-type):hover {
+            color: var(--color-navy);
+            background: rgba(140, 158, 255, 0.1);
+        }
+
+        nav a:last-of-type {
+            color: var(--color-accent-2);
+        }
+
+        nav a:last-of-type:hover {
+            background: rgba(255, 82, 82, 0.1);
+        }
+
+        /* Form Input Styles */
+        input[type="date"], input[type="number"] {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 14px;
+            padding: 12px 16px;
+            border: 2px solid rgba(42, 38, 96, 0.1);
+            border-radius: 8px;
+            background: white;
+            color: var(--color-text-body);
+            transition: all 0.3s ease;
+        }
+
+        input[type="date"]:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--color-navy-accent);
+            box-shadow: 0 0 0 3px rgba(140, 158, 255, 0.1);
+        }
+
+        label {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 14px;
+            line-height: 1; /* 100% */
+            text-transform: uppercase;
+            color: var(--color-navy);
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        /* Progress Bar Styles */
+        #sync-progress {
+            background: rgba(140, 158, 255, 0.1);
+            border: 1px solid rgba(140, 158, 255, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        #sync-progress-bar {
+            background: var(--gradient-navy3-to-accent);
+            height: 8px;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .bg-blue-200 {
+            background: rgba(140, 158, 255, 0.2) !important;
+        }
+
+        .text-blue-800 {
+            color: var(--color-navy) !important;
+        }
+
+        .text-blue-600 {
+            color: var(--color-navy-accent) !important;
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body>
     <!-- Navigation -->
-    <nav class="bg-white shadow-sm border-b">
+    <nav>
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
@@ -68,27 +431,27 @@
     <div class="container mx-auto px-6 py-8 max-w-7xl">
         <!-- Header -->
         <div class="mb-8">
-            <h1 class="text-4xl font-bold text-gray-900 mb-2">📊 Stock Forecasting Dashboard</h1>
-            <p class="text-xl text-gray-600">Real-time inventory analysis & purchasing recommendations</p>
+            <h1 style="margin-bottom: 8px;">📊 Stock Forecasting Dashboard</h1>
+            <p>Real-time inventory analysis & purchasing recommendations</p>
         </div>
 
         <!-- Key Metrics Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div class="card text-center bg-gradient-to-br from-blue-50 to-white">
-                <h3 class="text-sm font-semibold text-gray-600 mb-1">Total SKUs</h3>
-                <p class="text-3xl font-bold text-blue-600" id="total-skus">-</p>
+            <div class="card text-center" style="background: linear-gradient(135deg, rgba(42, 38, 96, 0.05), white);">
+                <h4 style="color: var(--color-text-body); margin-bottom: 8px;">Total SKUs</h4>
+                <p style="font-size: 32px; font-weight: 800; color: var(--color-navy);" id="total-skus">-</p>
             </div>
-            <div class="card text-center bg-gradient-to-br from-green-50 to-white">
-                <h3 class="text-sm font-semibold text-gray-600 mb-1">Orders Synced</h3>
-                <p class="text-3xl font-bold text-green-600" id="total-orders">-</p>
+            <div class="card text-center" style="background: linear-gradient(135deg, rgba(140, 158, 255, 0.1), white);">
+                <h4 style="color: var(--color-text-body); margin-bottom: 8px;">Orders Synced</h4>
+                <p style="font-size: 32px; font-weight: 800; color: var(--color-navy-accent);" id="total-orders">-</p>
             </div>
-            <div class="card text-center bg-gradient-to-br from-orange-50 to-white">
-                <h3 class="text-sm font-semibold text-gray-600 mb-1">Items Need Ordering</h3>
-                <p class="text-3xl font-bold text-orange-600" id="items-to-order">-</p>
+            <div class="card text-center" style="background: linear-gradient(135deg, rgba(255, 205, 131, 0.2), white);">
+                <h4 style="color: var(--color-text-body); margin-bottom: 8px;">Items Need Ordering</h4>
+                <p style="font-size: 32px; font-weight: 800; color: var(--color-accent-1);" id="items-to-order">-</p>
             </div>
-            <div class="card text-center bg-gradient-to-br from-purple-50 to-white">
-                <h3 class="text-sm font-semibold text-gray-600 mb-1">Data Freshness</h3>
-                <p class="text-sm text-purple-600 font-medium" id="data-freshness">-</p>
+            <div class="card text-center" style="background: linear-gradient(135deg, rgba(255, 82, 82, 0.1), white);">
+                <h4 style="color: var(--color-text-body); margin-bottom: 8px;">Data Freshness</h4>
+                <p style="font-size: 14px; font-weight: 800; color: var(--color-accent-2);" id="data-freshness">-</p>
             </div>
         </div>
 
@@ -253,21 +616,21 @@
             
             <!-- Summary Cards -->
             <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-                <div class="bg-red-50 rounded-lg p-3">
-                    <p class="text-xs text-red-600 font-medium">Critical</p>
-                    <p class="text-2xl font-bold text-red-700" id="critical-count">0</p>
+                <div style="background: rgba(255, 82, 82, 0.1); border-radius: 8px; padding: 16px;">
+                    <p style="font-family: var(--font-family); font-weight: 800; font-size: 12px; text-transform: uppercase; color: var(--color-accent-2); margin-bottom: 4px;">Critical</p>
+                    <p style="font-size: 24px; font-weight: 800; color: var(--color-accent-2);" id="critical-count">0</p>
                 </div>
-                <div class="bg-orange-50 rounded-lg p-3">
-                    <p class="text-xs text-orange-600 font-medium">Urgent</p>
-                    <p class="text-2xl font-bold text-orange-700" id="urgent-count">0</p>
+                <div style="background: rgba(255, 205, 131, 0.2); border-radius: 8px; padding: 16px;">
+                    <p style="font-family: var(--font-family); font-weight: 800; font-size: 12px; text-transform: uppercase; color: #E65100; margin-bottom: 4px;">Urgent</p>
+                    <p style="font-size: 24px; font-weight: 800; color: #E65100;" id="urgent-count">0</p>
                 </div>
-                <div class="bg-yellow-50 rounded-lg p-3">
-                    <p class="text-xs text-yellow-600 font-medium">Warning</p>
-                    <p class="text-2xl font-bold text-yellow-700" id="warning-count">0</p>
+                <div style="background: rgba(255, 205, 131, 0.1); border-radius: 8px; padding: 16px;">
+                    <p style="font-family: var(--font-family); font-weight: 800; font-size: 12px; text-transform: uppercase; color: var(--color-accent-1); margin-bottom: 4px;">Warning</p>
+                    <p style="font-size: 24px; font-weight: 800; color: var(--color-accent-1);" id="warning-count">0</p>
                 </div>
-                <div class="bg-green-50 rounded-lg p-3">
-                    <p class="text-xs text-green-600 font-medium">OK</p>
-                    <p class="text-2xl font-bold text-green-700" id="ok-count">0</p>
+                <div style="background: rgba(76, 175, 80, 0.1); border-radius: 8px; padding: 16px;">
+                    <p style="font-family: var(--font-family); font-weight: 800; font-size: 12px; text-transform: uppercase; color: #2E7D32; margin-bottom: 4px;">OK</p>
+                    <p style="font-size: 24px; font-weight: 800; color: #2E7D32;" id="ok-count">0</p>
                 </div>
             </div>
             
@@ -294,9 +657,9 @@
             
             <!-- Total Order Value -->
             <div class="mt-4 flex justify-end">
-                <div class="bg-blue-50 rounded-lg px-4 py-3">
-                    <span class="text-gray-700 font-medium">Total Units to Order:</span>
-                    <span class="text-2xl font-bold text-blue-700 ml-2" id="total-order-qty">0</span>
+                <div style="background: linear-gradient(135deg, rgba(42, 38, 96, 0.05), rgba(140, 158, 255, 0.1)); border-radius: 8px; padding: 16px 24px;">
+                    <span style="font-family: var(--font-family); font-weight: 400; color: var(--color-text-body);">Total Units to Order:</span>
+                    <span style="font-size: 24px; font-weight: 800; color: var(--color-navy); margin-left: 8px;" id="total-order-qty">0</span>
                 </div>
             </div>
         </div>

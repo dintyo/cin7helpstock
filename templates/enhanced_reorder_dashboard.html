@@ -5,25 +5,175 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock Reorder Dashboard - Cin7 Forecast</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;800&display=swap">
     <style>
-        .status-critical { color: #dc2626; font-weight: bold; }
-        .status-urgent { color: #ea580c; font-weight: bold; }
-        .status-warning { color: #d97706; }
-        .status-ok { color: #16a34a; }
-        .calculation-box {
-            background: linear-gradient(to right, #f3f4f6, #ffffff);
-            border-left: 4px solid #3b82f6;
+        :root {
+            --color-navy: #2A2660;
+            --color-navy-2: #474195;
+            --color-navy-3: #554FB0;
+            --color-navy-4: #635CCA;
+            --color-navy-accent: #8C9EFF;
+            --color-accent-1: #FFCD83;
+            --color-accent-2: #FF5252;
+            --color-text-body: #707074;
+            --color-text-body-light: #B0B0B5;
+            --color-background: #F5F4F6;
+            --font-family: 'Montserrat', sans-serif;
+            --shadow-default: 0 2px 4px rgba(38, 50, 56, 0.32);
+            --gradient-navy-to-navy2: linear-gradient(135deg, #2A2660, #474195);
         }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-background);
+            color: var(--color-text-body);
+        }
+
+        h1, .h1 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 56px;
+            line-height: 1.1; /* 110% */
+            text-transform: capitalize;
+            color: var(--color-navy);
+        }
+        
+        @media (max-width: 991px) {
+            h1, .h1 {
+                font-size: 40px;
+            }
+        }
+
+        h2, .h2 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 32px;
+            line-height: 1.2; /* 120% */
+            color: var(--color-navy);
+        }
+
+        @media (max-width: 991px) {
+            h2, .h2 {
+                font-size: 24px;
+            }
+        }
+
+        h3, .h3 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 16px;
+            line-height: 1.2; /* 120% */
+            color: var(--color-navy);
+        }
+
+        h4, .h4 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 14px;
+            line-height: 1; /* 100% */
+            text-transform: uppercase;
+            color: var(--color-navy);
+        }
+
+        p, .paragraph {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 16px;
+            line-height: 1.5; /* 150% */
+        }
+
+        button, .button {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+        }
+
+        .status-critical { 
+            color: var(--color-accent-2); 
+            font-weight: 800; 
+        }
+        .status-urgent { 
+            color: #E65100; 
+            font-weight: 800; 
+        }
+        .status-warning { 
+            color: var(--color-accent-1); 
+            font-weight: 800; 
+        }
+        .status-ok { 
+            color: #2E7D32; 
+            font-weight: 800; 
+        }
+
+        .calculation-box {
+            background: linear-gradient(135deg, rgba(42, 38, 96, 0.05), white);
+            border-left: 4px solid var(--color-navy-accent);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
         .math-step {
-            font-family: 'Courier New', monospace;
-            background: #f9fafb;
-            padding: 8px;
-            margin: 4px 0;
-            border-radius: 4px;
+            font-family: var(--font-family);
+            font-weight: 400;
+            background: rgba(140, 158, 255, 0.05);
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            border: 1px solid rgba(140, 158, 255, 0.1);
+        }
+
+        /* Card styles */
+        .bg-white.rounded-lg.shadow-sm {
+            background: white !important;
+            border-radius: 12px !important;
+            box-shadow: var(--shadow-default) !important;
+        }
+
+        /* Navigation styles */
+        nav {
+            background: white !important;
+            box-shadow: var(--shadow-default) !important;
+        }
+
+        nav a {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Button styles */
+        .bg-blue-600 {
+            background: var(--gradient-navy-to-navy2) !important;
+        }
+
+        /* Input styles */
+        input[type="number"], input[type="date"] {
+            font-family: var(--font-family);
+            border: 2px solid rgba(42, 38, 96, 0.1);
+            border-radius: 8px;
+        }
+
+        input[type="number"]:focus, input[type="date"]:focus {
+            border-color: var(--color-navy-accent) !important;
+            box-shadow: 0 0 0 3px rgba(140, 158, 255, 0.1) !important;
+        }
+
+        /* Label styles */
+        label {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--color-navy);
+            letter-spacing: 0.5px;
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body>
     <!-- Navigation -->
     <nav class="bg-white shadow-sm border-b">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

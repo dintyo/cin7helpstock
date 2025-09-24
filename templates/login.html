@@ -5,51 +5,162 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Stock Forecasting</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;800&display=swap">
+    <style>
+        :root {
+            --color-navy: #2A2660;
+            --color-navy-accent: #8C9EFF;
+            --color-accent-2: #FF5252;
+            --color-text-body: #707074;
+            --color-background: #F5F4F6;
+            --font-family: 'Montserrat', sans-serif;
+            --shadow-default: 0 2px 4px rgba(38, 50, 56, 0.32);
+            --gradient-navy-to-navy2: linear-gradient(135deg, #2A2660, #474195);
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-background);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        h1 {
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 32px;
+            line-height: 1.2; /* 120% */
+            text-transform: capitalize;
+            color: var(--color-navy);
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 991px) {
+            h1 {
+                font-size: 24px;
+            }
+        }
+
+        p {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 16px;
+            line-height: 1.5;
+            color: var(--color-text-body);
+            text-align: center;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: var(--shadow-default);
+            padding: 32px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .error-message {
+            background: rgba(255, 82, 82, 0.1);
+            border: 1px solid var(--color-accent-2);
+            color: var(--color-accent-2);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 14px;
+        }
+
+        input[type="password"] {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 16px;
+            padding: 16px;
+            border: 2px solid rgba(42, 38, 96, 0.1);
+            border-radius: 8px;
+            background: white;
+            color: var(--color-text-body);
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+
+        input[type="password"]:focus {
+            outline: none;
+            border-color: var(--color-navy-accent);
+            box-shadow: 0 0 0 3px rgba(140, 158, 255, 0.1);
+        }
+
+        .login-button {
+            background: var(--gradient-navy-to-navy2);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-family: var(--font-family);
+            font-weight: 800;
+            font-size: 12px;
+            line-height: 1.15; /* 115% */
+            text-transform: uppercase;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            margin-top: 24px;
+        }
+
+        .login-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(42, 38, 96, 0.4);
+        }
+
+        .caption {
+            font-family: var(--font-family);
+            font-weight: 400;
+            font-size: 12px;
+            line-height: 1.45;
+            color: var(--color-text-body);
+            text-align: center;
+            margin-top: 24px;
+        }
+    </style>
 </head>
-<body class="bg-gray-50 min-h-screen flex items-center justify-center">
-    <div class="max-w-md w-full space-y-8">
+<body>
+    <div>
         <div>
-            <h1 class="text-center text-3xl font-bold text-gray-900">📦 Stock Forecasting</h1>
-            <p class="mt-2 text-center text-sm text-gray-600">Enter password to access the application</p>
+            <h1>📦 Stock Forecasting</h1>
+            <p>Enter password to access the application</p>
         </div>
         
-        <form method="POST" class="mt-8 space-y-6">
-            <div class="bg-white p-8 rounded-lg shadow">
+        <form method="POST">
+            <div class="login-card">
                 {% if error %}
-                    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                    <div class="error-message">
                         {{ error }}
                     </div>
                 {% endif %}
                 
                 <div>
-                    <label for="password" class="sr-only">Password</label>
                     <input 
                         id="password" 
                         name="password" 
                         type="password" 
                         required 
-                        class="relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 text-lg"
                         placeholder="Enter password"
                         autofocus
                     >
                 </div>
                 
-                <div class="mt-6">
-                    <button 
-                        type="submit"
-                        class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-lg font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-                    >
-                        🔓 Access Dashboard
-                    </button>
-                </div>
+                <button type="submit" class="login-button">
+                    🔓 Access Dashboard
+                </button>
             </div>
         </form>
         
-        <div class="text-center">
-            <p class="text-xs text-gray-500">
-                This application contains sensitive business data.<br>
-                Authorized access only.
-            </p>
+        <div class="caption">
+            This application contains sensitive business data.<br>
+            Authorized access only.
         </div>
     </div>
 
