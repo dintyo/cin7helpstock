@@ -560,8 +560,8 @@ def logout():
 @app.route('/')
 @require_auth
 def dashboard():
-    """Main unified dashboard"""
-    return render_template('enhanced_unified_dashboard.html')
+    """Redirect to reorder page (main functionality)"""
+    return redirect(url_for('reorder_dashboard'))
 
 @app.route('/reorder')
 @require_auth
