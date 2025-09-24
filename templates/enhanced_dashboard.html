@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Forecasting Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .card { @apply bg-white rounded-lg shadow-md p-6 mb-6; }
+        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors; }
+        .btn-secondary { @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors; }
+        .btn-success { @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded transition-colors; }
+        .btn-warning { @apply bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded transition-colors; }
+        .table-row { @apply border-b hover:bg-gray-50 transition-colors; }
+        .status-ok { @apply text-green-600 font-semibold; }
+        .status-warning { @apply text-yellow-600 font-semibold; }
+        .status-critical { @apply text-red-600 font-semibold; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Stock Forecasting Dashboard</h1>
+            <p class="text-gray-600">AI-powered stock forecasting and reorder management</p>
+            <div class="mt-2 text-sm text-blue-600" id="sync-status">Loading sync status...</div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+            <div class="card">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total SKUs</h3>
+                <p class="text-3xl font-bold text-blue-600" id="total-skus">-</p>
+            </div>
+            <div class="card">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Orders</h3>
+                <p class="text-3xl font-bold text-green-600" id="total-orders">-</p>
+            </div>
+            <div class="card">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Active SKUs</h3>
+                <p class="text-3xl font-bold text-purple-600" id="active-skus">-</p>
+            </div>
+            <div class="card">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Data Range</h3>
+                <p class="text-sm text-gray-600" id="data-range">-</p>
+            </div>
+            <div class="card">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Needs Reorder</h3>
+                <p class="text-3xl font-bold text-red-600" id="needs-reorder">-</p>
+            </div>
+        </div>
+
+        <!-- Date Window Selector -->
+        <div class="card">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">📅 Date Window Selector</h2>
+            <p class="text-gray-600 mb-4">Select specific periods with "normal stock flow" for accurate velocity calculations</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input type="date" id="velocity-start-date" value="2024-06-04"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input type="date" id="velocity-end-date" value="2024-06-06"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadVelocityForPeriod()" class="btn-secondary">Apply Date Window</button>
+                </div>
+            </div>
+            
+            <div class="text-sm text-gray-500">
+                💡 Choose periods with consistent sales flow, avoiding stockouts or promotional periods
+            </div>
+        </div>
+
+        <!-- Forecasting Controls -->
+        <div class="card">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">🔧 Forecasting Parameters</h2>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Lead Time (days)</label>
+                    <input type="number" id="lead-time" value="30" min="1" max="365" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Service Level (%)</label>
+                    <select id="service-level" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="90">90% (10% stockout risk)</option>
+                        <option value="95" selected>95% (5% stockout risk)</option>
+                        <option value="99">99% (1% stockout risk)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Review Period (days)</label>
+                    <input type="number" id="review-days" value="7" min="1" max="30"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Warehouse</label>
+                    <select id="warehouse" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">All Warehouses</option>
+                        <option value="VIC">VIC</option>
+                        <option value="QLD">QLD</option>
+                        <option value="NSW">NSW</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex space-x-4">
+                <button onclick="calculateReorderPoints()" class="btn-primary">📊 Calculate Reorder Points</button>
+                <button onclick="exportReorderList()" class="btn-success">📄 Export Purchase List</button>
+            </div>
+        </div>
+
+        <!-- Reorder Points Table -->
+        <div class="card">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">📋 Reorder Analysis</h2>
+            <div class="mb-4 text-sm text-gray-600" id="reorder-summary">
+                Click "Calculate Reorder Points" to analyze your inventory
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Daily Velocity</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Stock</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reorder Point</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order Qty</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days to Stockout</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reorder-table" class="bg-white divide-y divide-gray-200">
+                        <tr>
+                            <td colspan="9" class="px-6 py-8 text-center text-gray-500">
+                                📊 Ready to calculate reorder points
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Velocity Chart -->
+        <div class="card">
+            <h2 class="text-xl font-bold text-gray-900 mb-4">📈 Sales Velocity Overview</h2>
+            <canvas id="velocity-chart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let velocityChart = null;
+        let currentVelocityData = [];
+
+        // Load dashboard stats on page load
+        async function loadDashboardStats() {
+            try {
+                const response = await fetch('/api/dashboard/stats');
+                const data = await response.json();
+                
+                document.getElementById('total-skus').textContent = data.total_skus || 0;
+                document.getElementById('total-orders').textContent = data.total_orders || 0;
+                document.getElementById('active-skus').textContent = data.active_skus || 0;
+                
+                if (data.data_range) {
+                    document.getElementById('data-range').textContent = 
+                        `${data.data_range.from} to ${data.data_range.to}`;
+                }
+                
+                // Show warehouse breakdown
+                if (data.warehouse_breakdown) {
+                    const breakdown = data.warehouse_breakdown
+                        .map(w => `${w.warehouse}: ${w.orders} orders`)
+                        .join(', ');
+                    document.getElementById('sync-status').textContent = 
+                        `Warehouse breakdown: ${breakdown}`;
+                }
+            } catch (error) {
+                console.error('Failed to load dashboard stats:', error);
+            }
+        }
+
+        // Load velocity data for specific period
+        async function loadVelocityForPeriod() {
+            const startDate = document.getElementById('velocity-start-date').value;
+            const endDate = document.getElementById('velocity-end-date').value;
+            const warehouse = document.getElementById('warehouse').value;
+            
+            const params = new URLSearchParams({
+                start: startDate,
+                end: endDate
+            });
+            
+            if (warehouse) params.append('warehouse', warehouse);
+            
+            try {
+                const response = await fetch(`/api/skus/velocity?${params}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentVelocityData = data.data;
+                    displayVelocityChart(data.data);
+                    
+                    // Update period info
+                    document.getElementById('sync-status').textContent = 
+                        `Velocity calculated for ${data.period} - ${data.total_skus} SKUs`;
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to load velocity data:', error);
+            }
+        }
+
+        // Calculate reorder points
+        async function calculateReorderPoints() {
+            const leadTime = document.getElementById('lead-time').value;
+            const serviceLevel = document.getElementById('service-level').value;
+            const reviewDays = document.getElementById('review-days').value;
+            const warehouse = document.getElementById('warehouse').value;
+            
+            const startDate = document.getElementById('velocity-start-date').value;
+            const endDate = document.getElementById('velocity-end-date').value;
+            
+            // Calculate velocity days from date range
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const velocityDays = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+            
+            const params = new URLSearchParams({
+                lead_time: leadTime,
+                service_level: serviceLevel,
+                review_days: reviewDays,
+                velocity_days: velocityDays
+            });
+            
+            if (warehouse) params.append('warehouse', warehouse);
+            
+            try {
+                const response = await fetch(`/api/reorder/calculate?${params}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayReorderData(data.data);
+                    document.getElementById('needs-reorder').textContent = data.needs_reorder;
+                    document.getElementById('reorder-summary').textContent = 
+                        `${data.total_skus} SKUs analyzed, ${data.needs_reorder} need reordering. ${data.note || ''}`;
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to calculate reorder points:', error);
+                alert('Failed to calculate reorder points');
+            }
+        }
+
+        // Display reorder data in table
+        function displayReorderData(data) {
+            const tbody = document.getElementById('reorder-table');
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-6 py-8 text-center text-gray-500">No SKUs found with sales data in the selected period</td></tr>';
+                return;
+            }
+            
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'table-row';
+                
+                let statusClass, statusText;
+                if (item.days_until_stockout <= 30) {
+                    statusClass = 'status-critical';
+                    statusText = 'URGENT';
+                } else if (item.needs_reorder) {
+                    statusClass = 'status-warning';
+                    statusText = 'REORDER';
+                } else {
+                    statusClass = 'status-ok';
+                    statusText = 'OK';
+                }
+                
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${item.sku}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.description || '-'}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.daily_velocity}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.current_stock}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.reorder_point}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.recommended_order_qty}</td>
+                    <td class="px-4 py-3 text-sm text-gray-700">${item.days_until_stockout}</td>
+                    <td class="px-4 py-3 text-sm ${statusClass}">${statusText}</td>
+                    <td class="px-4 py-3 text-sm">
+                        <button onclick="viewSkuDetail('${item.sku}')" class="text-blue-600 hover:text-blue-800">View</button>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Display velocity chart
+        function displayVelocityChart(data) {
+            const ctx = document.getElementById('velocity-chart').getContext('2d');
+            
+            if (velocityChart) {
+                velocityChart.destroy();
+            }
+            
+            const top10 = data.slice(0, 10);
+            
+            velocityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10.map(item => item.sku),
+                    datasets: [{
+                        label: 'Daily Velocity (units/day)',
+                        data: top10.map(item => item.daily_velocity),
+                        backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                        borderColor: 'rgba(59, 130, 246, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Units per Day'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'SKU'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Top 10 SKUs by Sales Velocity'
+                        }
+                    }
+                }
+            });
+        }
+
+        // Export reorder list
+        function exportReorderList() {
+            const table = document.getElementById('reorder-table');
+            if (!table || table.children.length === 0) {
+                alert('No reorder data to export. Calculate reorder points first.');
+                return;
+            }
+            
+            // Simple CSV export
+            let csv = 'SKU,Description,Daily Velocity,Current Stock,Reorder Point,Recommended Order Qty,Days Until Stockout,Status\n';
+            
+            const rows = table.children;
+            for (let row of rows) {
+                if (row.children.length >= 8) {
+                    const cells = Array.from(row.children).slice(0, 8);
+                    const rowData = cells.map(cell => cell.textContent.trim()).join(',');
+                    csv += rowData + '\n';
+                }
+            }
+            
+            // Download CSV
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `reorder_analysis_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // View SKU detail (placeholder)
+        function viewSkuDetail(sku) {
+            alert(`SKU Detail for ${sku}\n\nFeatures coming:\n- Historical sales chart\n- Forecast projection\n- Per-SKU configuration\n- Supplier information`);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardStats();
+            loadVelocityForPeriod();
+        });
+    </script>
+</body>
+</html>

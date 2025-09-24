@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Forecasting - Purchase Recommendations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .card { @apply bg-white rounded-lg shadow-lg p-6 mb-6; }
+        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors; }
+        .btn-export { @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium transition-colors; }
+        .status-ok { @apply bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .status-reorder { @apply bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .status-urgent { @apply bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium; }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-6 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">📦 Stock Forecasting</h1>
+            <p class="text-xl text-gray-600">AI-powered purchase recommendations for your business</p>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="card text-center">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Products</h3>
+                <p class="text-3xl font-bold text-blue-600" id="total-skus">-</p>
+            </div>
+            <div class="card text-center">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Need Reordering</h3>
+                <p class="text-3xl font-bold text-orange-600" id="needs-reorder">-</p>
+            </div>
+            <div class="card text-center">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Urgent Items</h3>
+                <p class="text-3xl font-bold text-red-600" id="urgent-items">-</p>
+            </div>
+            <div class="card text-center">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2">Data Range</h3>
+                <p class="text-sm text-gray-600" id="data-range">-</p>
+            </div>
+        </div>
+
+        <!-- Business Controls -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">🎛️ Business Parameters</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div>
+                    <label class="block text-lg font-medium text-gray-700 mb-2">Lead Time</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="lead-time" value="30" min="1" max="365" 
+                               class="flex-1 px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <span class="text-gray-600 font-medium">days</span>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-1">How long to get new stock from supplier</p>
+                </div>
+                
+                <div>
+                    <label class="block text-lg font-medium text-gray-700 mb-2">Buffer Stock</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="buffer-months" value="1" min="0.5" max="6" step="0.5"
+                               class="flex-1 px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <span class="text-gray-600 font-medium">months</span>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-1">Extra safety stock to avoid stockouts</p>
+                </div>
+                
+                <div>
+                    <label class="block text-lg font-medium text-gray-700 mb-2">Expected Growth</label>
+                    <div class="flex items-center space-x-2">
+                        <input type="number" id="growth-rate" value="0" min="-50" max="100" step="5"
+                               class="flex-1 px-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <span class="text-gray-600 font-medium">% per month</span>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-1">Expected monthly sales growth</p>
+                </div>
+            </div>
+            
+            <div class="flex space-x-4">
+                <button onclick="analyzeStock()" class="btn-primary">
+                    📊 Analyze Stock & Generate Purchase List
+                </button>
+                <button onclick="exportPurchaseList()" class="btn-export" id="export-btn" style="display: none;">
+                    📄 Export Purchase List
+                </button>
+            </div>
+        </div>
+
+        <!-- Purchase Recommendations -->
+        <div class="card" id="results-section" style="display: none;">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-900">🛒 Purchase Recommendations</h2>
+                <div class="text-lg text-gray-600" id="analysis-summary"></div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Product</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Current Stock</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Monthly Sales</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Reorder Point</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Order Quantity</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Days Until Stockout</th>
+                            <th class="px-6 py-4 text-left text-sm font-bold text-gray-700">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analysis-table" class="bg-white divide-y divide-gray-200">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Key Insights -->
+        <div class="card" id="insights-section" style="display: none;">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">💡 Key Insights</h2>
+            <div id="insights-content" class="space-y-3 text-gray-700">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentAnalysisData = [];
+
+        // Load dashboard overview
+        async function loadOverview() {
+            try {
+                const response = await fetch('/api/dashboard/overview');
+                const data = await response.json();
+                
+                document.getElementById('total-skus').textContent = data.total_skus || 0;
+                document.getElementById('data-range').textContent = data.latest_data || 'No data';
+            } catch (error) {
+                console.error('Failed to load overview:', error);
+            }
+        }
+
+        // Analyze stock with business parameters
+        async function analyzeStock() {
+            const leadTime = document.getElementById('lead-time').value;
+            const bufferMonths = document.getElementById('buffer-months').value;
+            const growthRate = document.getElementById('growth-rate').value;
+            
+            const params = new URLSearchParams({
+                lead_time: leadTime,
+                buffer_months: bufferMonths,
+                growth_rate: growthRate
+            });
+            
+            try {
+                const response = await fetch(`/api/stock/analysis?${params}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentAnalysisData = data.data;
+                    displayAnalysisResults(data);
+                    showInsights(data);
+                    
+                    // Update summary stats
+                    document.getElementById('needs-reorder').textContent = data.summary.needs_reorder;
+                    document.getElementById('urgent-items').textContent = data.summary.urgent_items;
+                    
+                    // Show results and export button
+                    document.getElementById('results-section').style.display = 'block';
+                    document.getElementById('insights-section').style.display = 'block';
+                    document.getElementById('export-btn').style.display = 'inline-block';
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Failed to analyze stock:', error);
+                alert('Failed to analyze stock');
+            }
+        }
+
+        // Display analysis results
+        function displayAnalysisResults(data) {
+            const tbody = document.getElementById('analysis-table');
+            tbody.innerHTML = '';
+            
+            const summary = `${data.summary.total_skus} products analyzed - ${data.summary.needs_reorder} need reordering (${data.summary.urgent_items} urgent)`;
+            document.getElementById('analysis-summary').textContent = summary;
+            
+            data.data.forEach(item => {
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';
+                
+                let statusClass;
+                switch(item.status_color) {
+                    case 'red': statusClass = 'status-urgent'; break;
+                    case 'orange': statusClass = 'status-reorder'; break;
+                    default: statusClass = 'status-ok';
+                }
+                
+                row.innerHTML = `
+                    <td class="px-6 py-4">
+                        <div class="font-medium text-gray-900">${item.sku}</div>
+                        <div class="text-sm text-gray-500">${item.description || 'No description'}</div>
+                    </td>
+                    <td class="px-6 py-4 text-lg font-medium">${item.current_stock}</td>
+                    <td class="px-6 py-4 text-lg">${item.monthly_velocity}</td>
+                    <td class="px-6 py-4 text-lg font-medium">${item.reorder_point}</td>
+                    <td class="px-6 py-4 text-xl font-bold ${item.order_quantity > 0 ? 'text-blue-600' : 'text-gray-400'}">${item.order_quantity}</td>
+                    <td class="px-6 py-4 text-lg ${item.days_until_stockout <= 30 ? 'text-red-600 font-bold' : 'text-gray-700'}">${item.days_until_stockout}</td>
+                    <td class="px-6 py-4">
+                        <span class="${statusClass}">${item.status}</span>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Show business insights
+        function showInsights(data) {
+            const insights = [];
+            
+            const urgentItems = data.data.filter(x => x.status === 'URGENT');
+            const reorderItems = data.data.filter(x => x.status === 'REORDER NEEDED');
+            
+            if (urgentItems.length > 0) {
+                insights.push(`🚨 <strong>URGENT:</strong> ${urgentItems.length} items will stockout within your lead time. Order immediately!`);
+            }
+            
+            if (reorderItems.length > 0) {
+                insights.push(`⚠️ <strong>REORDER SOON:</strong> ${reorderItems.length} items below reorder point. Plan your next order.`);
+            }
+            
+            const totalOrderValue = data.data.reduce((sum, item) => sum + item.order_quantity, 0);
+            if (totalOrderValue > 0) {
+                insights.push(`💰 <strong>Total units to order:</strong> ${totalOrderValue} units across ${data.data.filter(x => x.order_quantity > 0).length} products.`);
+            }
+            
+            const topSellers = data.data.slice(0, 3);
+            if (topSellers.length > 0) {
+                insights.push(`🔥 <strong>Top sellers:</strong> ${topSellers.map(x => x.sku).join(', ')} - monitor these closely.`);
+            }
+            
+            if (insights.length === 0) {
+                insights.push(`✅ <strong>All good!</strong> No immediate reordering needed. Your inventory levels look healthy.`);
+            }
+            
+            document.getElementById('insights-content').innerHTML = insights.map(insight => 
+                `<div class="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-400">${insight}</div>`
+            ).join('');
+        }
+
+        // Export purchase list (only items that need ordering)
+        function exportPurchaseList() {
+            const itemsToOrder = currentAnalysisData.filter(item => item.order_quantity > 0);
+            
+            if (itemsToOrder.length === 0) {
+                alert('No items need reordering at this time.');
+                return;
+            }
+            
+            // Create CSV
+            let csv = 'SKU,Product Description,Current Stock,Recommended Order Quantity,Days Until Stockout,Priority\n';
+            
+            itemsToOrder.forEach(item => {
+                csv += `${item.sku},"${item.description || ''}",${item.current_stock},${item.order_quantity},${item.days_until_stockout},${item.status}\n`;
+            });
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `purchase_list_${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadOverview();
+            
+            // Auto-run analysis with default parameters
+            setTimeout(analyzeStock, 1000);
+        });
+    </script>
+</body>
+</html>

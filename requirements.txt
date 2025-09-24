@@ -1,0 +1,15 @@
+# Core Flask dependencies
+Flask==3.0.0
+flask-cors==4.0.0
+python-dotenv==1.0.0
+requests==2.31.0
+
+# Database (SQLite built into Python, SQLAlchemy for future expansion)
+Flask-SQLAlchemy==3.1.1
+
+# Data analysis (for advanced calculations)
+pandas==2.1.4
+numpy==1.26.2
+
+# Date handling
+python-dateutil==2.8.2

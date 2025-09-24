@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Forecasting Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.tailwindcss.min.css">
+    <style>
+        .card { @apply bg-white rounded-lg shadow-lg p-6 mb-6; }
+        .btn-primary { @apply bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all transform hover:scale-105; }
+        .btn-secondary { @apply bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-medium transition-colors; }
+        .btn-success { @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-medium transition-colors; }
+        .btn-export { @apply bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-sm font-medium transition-colors; }
+        .status-ok { @apply bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .status-warning { @apply bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .status-urgent { @apply bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .status-critical { @apply bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-medium; }
+        .loading { @apply opacity-50 pointer-events-none; }
+        
+        /* Enhanced table styling */
+        .data-table {
+            @apply w-full border-collapse;
+        }
+        .data-table thead {
+            @apply bg-gray-50 border-b-2 border-gray-200;
+        }
+        .data-table th {
+            @apply px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider;
+        }
+        .data-table tbody tr {
+            @apply border-b border-gray-200 hover:bg-gray-50 transition-colors;
+        }
+        .data-table td {
+            @apply px-4 py-3 text-sm text-gray-900;
+        }
+        .metric-value {
+            @apply font-mono text-right;
+        }
+        .highlight-critical {
+            @apply bg-red-50 font-semibold;
+        }
+        .highlight-warning {
+            @apply bg-yellow-50;
+        }
+        .highlight-ok {
+            @apply bg-green-50;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-6 py-8 max-w-7xl">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">📊 Stock Forecasting Dashboard</h1>
+            <p class="text-xl text-gray-600">Real-time inventory analysis & purchasing recommendations</p>
+        </div>
+
+        <!-- Key Metrics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="card text-center bg-gradient-to-br from-blue-50 to-white">
+                <h3 class="text-sm font-semibold text-gray-600 mb-1">Total SKUs</h3>
+                <p class="text-3xl font-bold text-blue-600" id="total-skus">-</p>
+            </div>
+            <div class="card text-center bg-gradient-to-br from-green-50 to-white">
+                <h3 class="text-sm font-semibold text-gray-600 mb-1">Orders Synced</h3>
+                <p class="text-3xl font-bold text-green-600" id="total-orders">-</p>
+            </div>
+            <div class="card text-center bg-gradient-to-br from-orange-50 to-white">
+                <h3 class="text-sm font-semibold text-gray-600 mb-1">Items Need Ordering</h3>
+                <p class="text-3xl font-bold text-orange-600" id="items-to-order">-</p>
+            </div>
+            <div class="card text-center bg-gradient-to-br from-purple-50 to-white">
+                <h3 class="text-sm font-semibold text-gray-600 mb-1">Data Freshness</h3>
+                <p class="text-sm text-purple-600 font-medium" id="data-freshness">-</p>
+            </div>
+        </div>
+
+        <!-- Step 1: Data Sync Status -->
+        <div class="card">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-900">📦 Step 1: Inventory Data Status</h2>
+                <button onclick="exportTableToCSV('sync-status-table', 'inventory_sync_status.csv')" 
+                        class="btn-export">📥 Export CSV</button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table id="sync-status-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Data Type</th>
+                            <th>Status</th>
+                            <th>Record Count</th>
+                            <th>Date Range</th>
+                            <th>Last Updated</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sync-status-body">
+                        <tr>
+                            <td colspan="6" class="text-center text-gray-500">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Sync Controls -->
+            <div class="mt-4 flex gap-3">
+                <button onclick="syncRecentOrders()" class="btn-primary">
+                    🔄 Sync Recent Orders
+                </button>
+                <button onclick="syncLiveStock()" class="btn-secondary">
+                    📊 Update Stock Levels
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Analysis Period Selection -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">📅 Step 2: Select Analysis Period</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                    <input type="date" id="analysis-from" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                    <input type="date" id="analysis-to" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="loadAnalysis()" class="btn-primary w-full">
+                        📊 Analyze Period
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Period Buttons -->
+            <div class="mt-3 flex gap-2">
+                <button onclick="setQuickPeriod(7)" class="btn-secondary text-sm">Last 7 Days</button>
+                <button onclick="setQuickPeriod(14)" class="btn-secondary text-sm">Last 14 Days</button>
+                <button onclick="setQuickPeriod(30)" class="btn-secondary text-sm">Last 30 Days</button>
+                <button onclick="setQuickPeriod(90)" class="btn-secondary text-sm">Last 90 Days</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Business Parameters -->
+        <div class="card">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">⚙️ Step 3: Business Parameters</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Lead Time (days)</label>
+                    <input type="number" id="lead-time" value="30" min="1" max="365" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Buffer Stock (months)</label>
+                    <input type="number" id="buffer-months" value="1" min="0.5" max="6" step="0.5"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Growth Factor</label>
+                    <input type="number" id="scale-factor" value="1.0" min="0.5" max="2.0" step="0.1"
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex items-end">
+                    <button onclick="updateRecommendations()" class="btn-primary w-full">
+                        🔄 Update Analysis
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4: Sales Velocity Analysis -->
+        <div class="card" id="velocity-section" style="display: none;">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-900">📈 Sales Velocity Analysis</h2>
+                <button onclick="exportTableToCSV('velocity-table', 'sales_velocity.csv')" 
+                        class="btn-export">📥 Export CSV</button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table id="velocity-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th class="text-right">Period Sales</th>
+                            <th class="text-right">Daily Velocity</th>
+                            <th class="text-right">Weekly Velocity</th>
+                            <th class="text-right">Monthly Velocity</th>
+                            <th class="text-right">Current Stock</th>
+                            <th class="text-right">Days Coverage</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="velocity-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Step 5: Purchase Recommendations -->
+        <div class="card" id="recommendations-section" style="display: none;">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-900">🛒 Purchase Recommendations</h2>
+                <div class="flex gap-2">
+                    <button onclick="exportTableToCSV('recommendations-table', 'purchase_recommendations.csv')" 
+                            class="btn-export">📥 Export CSV</button>
+                    <button onclick="printPurchaseOrder()" 
+                            class="btn-success">🖨️ Print Order</button>
+                </div>
+            </div>
+            
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                <div class="bg-red-50 rounded-lg p-3">
+                    <p class="text-xs text-red-600 font-medium">Critical</p>
+                    <p class="text-2xl font-bold text-red-700" id="critical-count">0</p>
+                </div>
+                <div class="bg-orange-50 rounded-lg p-3">
+                    <p class="text-xs text-orange-600 font-medium">Urgent</p>
+                    <p class="text-2xl font-bold text-orange-700" id="urgent-count">0</p>
+                </div>
+                <div class="bg-yellow-50 rounded-lg p-3">
+                    <p class="text-xs text-yellow-600 font-medium">Warning</p>
+                    <p class="text-2xl font-bold text-yellow-700" id="warning-count">0</p>
+                </div>
+                <div class="bg-green-50 rounded-lg p-3">
+                    <p class="text-xs text-green-600 font-medium">OK</p>
+                    <p class="text-2xl font-bold text-green-700" id="ok-count">0</p>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table id="recommendations-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Priority</th>
+                            <th>SKU</th>
+                            <th class="text-right">Current Stock</th>
+                            <th class="text-right">Daily Velocity</th>
+                            <th class="text-right">Days Left</th>
+                            <th class="text-right">Reorder Point</th>
+                            <th class="text-right">Order Qty</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recommendations-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Total Order Value -->
+            <div class="mt-4 flex justify-end">
+                <div class="bg-blue-50 rounded-lg px-4 py-3">
+                    <span class="text-gray-700 font-medium">Total Units to Order:</span>
+                    <span class="text-2xl font-bold text-blue-700 ml-2" id="total-order-qty">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mathematical Explanation -->
+        <div class="card" id="math-section" style="display: none;">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-gray-900">📐 Calculation Details</h2>
+                <button onclick="exportTableToCSV('math-table', 'calculation_details.csv')" 
+                        class="btn-export">📥 Export CSV</button>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table id="math-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>SKU</th>
+                            <th class="text-right">Sales/Period</th>
+                            <th class="text-right">Period Days</th>
+                            <th class="text-right">Daily Velocity</th>
+                            <th class="text-right">Scale Factor</th>
+                            <th class="text-right">Lead Time Demand</th>
+                            <th class="text-right">Safety Stock</th>
+                            <th class="text-right">Reorder Point</th>
+                        </tr>
+                    </thead>
+                    <tbody id="math-body">
+                        <!-- Populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentData = {};
+        let stockLevels = {};
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStatus();
+            setDefaultDates();
+        });
+
+        function setDefaultDates() {
+            const today = new Date();
+            const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('analysis-to').value = today.toISOString().split('T')[0];
+            document.getElementById('analysis-from').value = lastWeek.toISOString().split('T')[0];
+        }
+
+        function setQuickPeriod(days) {
+            const today = new Date();
+            const past = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
+            
+            document.getElementById('analysis-to').value = today.toISOString().split('T')[0];
+            document.getElementById('analysis-from').value = past.toISOString().split('T')[0];
+            
+            loadAnalysis();
+        }
+
+        async function loadStatus() {
+            try {
+                // Load sync status
+                const response = await fetch('/api/analysis/skus');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateSyncStatusTable(data);
+                    document.getElementById('total-skus').textContent = data.total_skus || '0';
+                    document.getElementById('total-orders').textContent = data.total_orders || '0';
+                    
+                    if (data.date_range) {
+                        document.getElementById('data-freshness').textContent = 
+                            `${data.date_range.min_date} to ${data.date_range.max_date}`;
+                    }
+                }
+
+                // Load current stock levels
+                const stockResponse = await fetch('/api/stock/current');
+                const stockData = await stockResponse.json();
+                if (stockData.success) {
+                    stockLevels = stockData.stock_levels;
+                }
+            } catch (error) {
+                console.error('Error loading status:', error);
+            }
+        }
+
+        function updateSyncStatusTable(data) {
+            const tbody = document.getElementById('sync-status-body');
+            const rows = [];
+            
+            // Orders status
+            rows.push(`
+                <tr>
+                    <td class="font-medium">Customer Orders</td>
+                    <td><span class="status-ok">✓ Synced</span></td>
+                    <td class="metric-value">${data.total_orders || 0}</td>
+                    <td>${data.date_range ? `${data.date_range.min_date} to ${data.date_range.max_date}` : '-'}</td>
+                    <td>${new Date().toLocaleString()}</td>
+                    <td><button onclick="syncRecentOrders()" class="btn-secondary text-xs">Refresh</button></td>
+                </tr>
+            `);
+            
+            // Stock levels status
+            const stockCount = Object.keys(stockLevels).length;
+            rows.push(`
+                <tr>
+                    <td class="font-medium">Stock Levels</td>
+                    <td><span class="${stockCount > 0 ? 'status-ok' : 'status-warning'}">
+                        ${stockCount > 0 ? '✓ Loaded' : '⚠ Not loaded'}
+                    </span></td>
+                    <td class="metric-value">${stockCount}</td>
+                    <td>Current</td>
+                    <td>${new Date().toLocaleString()}</td>
+                    <td><button onclick="syncLiveStock()" class="btn-secondary text-xs">Update</button></td>
+                </tr>
+            `);
+            
+            tbody.innerHTML = rows.join('');
+        }
+
+        async function syncRecentOrders() {
+            const btn = event.target;
+            btn.classList.add('loading');
+            btn.textContent = '⏳ Syncing...';
+            
+            try {
+                const response = await fetch('/api/sync/recent?days=30&max=1000');
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ Synced ${data.orders_processed} orders with ${data.lines_stored} line items`);
+                    loadStatus();
+                } else {
+                    alert('❌ Sync failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Sync error: ' + error.message);
+            } finally {
+                btn.classList.remove('loading');
+                btn.textContent = '🔄 Sync Recent Orders';
+            }
+        }
+
+        async function syncLiveStock() {
+            const btn = event.target;
+            btn.classList.add('loading');
+            btn.textContent = '⏳ Updating...';
+            
+            try {
+                const response = await fetch('/api/sync/stock-live');
+                const data = await response.json();
+                
+                if (data.success) {
+                    stockLevels = data.stock_levels;
+                    alert(`✅ Updated stock levels for ${data.sku_count} SKUs`);
+                    loadStatus();
+                    
+                    // Refresh analysis if we have one
+                    if (currentData.skus) {
+                        loadAnalysis();
+                    }
+                } else {
+                    alert('❌ Stock update failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('❌ Stock update error: ' + error.message);
+            } finally {
+                btn.classList.remove('loading');
+                btn.textContent = '📊 Update Stock Levels';
+            }
+        }
+
+        async function loadAnalysis() {
+            const fromDate = document.getElementById('analysis-from').value;
+            const toDate = document.getElementById('analysis-to').value;
+            
+            if (!fromDate || !toDate) {
+                alert('Please select both dates');
+                return;
+            }
+            
+            try {
+                // Load velocity analysis
+                const velocityResponse = await fetch(`/api/analysis/period?from=${fromDate}&to=${toDate}`);
+                const velocityData = await velocityResponse.json();
+                
+                if (velocityData.success) {
+                    currentData = velocityData;
+                    updateVelocityTable(velocityData.skus);
+                    document.getElementById('velocity-section').style.display = 'block';
+                    
+                    // Load recommendations
+                    await updateRecommendations();
+                }
+            } catch (error) {
+                console.error('Error loading analysis:', error);
+                alert('Error loading analysis: ' + error.message);
+            }
+        }
+
+        async function updateRecommendations() {
+            const fromDate = document.getElementById('analysis-from').value;
+            const toDate = document.getElementById('analysis-to').value;
+            const leadTime = document.getElementById('lead-time').value;
+            const bufferMonths = document.getElementById('buffer-months').value;
+            const scaleFactor = document.getElementById('scale-factor').value;
+            
+            try {
+                const url = `/api/recommendations?from=${fromDate}&to=${toDate}&lead_time=${leadTime}&buffer_months=${bufferMonths}&scale_factor=${scaleFactor}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateRecommendationsTable(data.recommendations);
+                    updateMathTable(data.recommendations);
+                    updateSummaryCards(data.summary);
+                    
+                    document.getElementById('recommendations-section').style.display = 'block';
+                    document.getElementById('math-section').style.display = 'block';
+                    
+                    document.getElementById('items-to-order').textContent = data.summary.orders_needed || '0';
+                    document.getElementById('total-order-qty').textContent = data.summary.total_order_value || '0';
+                }
+            } catch (error) {
+                console.error('Error loading recommendations:', error);
+            }
+        }
+
+        function updateVelocityTable(skus) {
+            const tbody = document.getElementById('velocity-body');
+            const rows = skus.map(sku => {
+                const stock = stockLevels[sku.sku] || 0;
+                const daysCoverage = sku.daily_velocity > 0 ? (stock / sku.daily_velocity).toFixed(1) : '∞';
+                
+                let statusClass = 'status-ok';
+                let statusText = 'OK';
+                
+                if (stock === 0) {
+                    statusClass = 'status-critical';
+                    statusText = 'STOCKOUT';
+                } else if (daysCoverage < 7) {
+                    statusClass = 'status-critical';
+                    statusText = 'CRITICAL';
+                } else if (daysCoverage < 30) {
+                    statusClass = 'status-urgent';
+                    statusText = 'LOW';
+                } else if (daysCoverage < 60) {
+                    statusClass = 'status-warning';
+                    statusText = 'OK';
+                }
+                
+                return `
+                    <tr class="${stock === 0 ? 'highlight-critical' : ''}">
+                        <td class="font-medium">${sku.sku}</td>
+                        <td class="metric-value">${sku.total_quantity.toFixed(0)}</td>
+                        <td class="metric-value">${sku.daily_velocity.toFixed(2)}</td>
+                        <td class="metric-value">${sku.weekly_velocity.toFixed(1)}</td>
+                        <td class="metric-value">${sku.monthly_velocity.toFixed(1)}</td>
+                        <td class="metric-value font-bold">${stock.toFixed(0)}</td>
+                        <td class="metric-value">${daysCoverage}</td>
+                        <td class="text-center"><span class="${statusClass}">${statusText}</span></td>
+                    </tr>
+                `;
+            }).join('');
+            
+            tbody.innerHTML = rows;
+        }
+
+        function updateRecommendationsTable(recommendations) {
+            const tbody = document.getElementById('recommendations-body');
+            
+            // Sort by urgency
+            const sorted = recommendations.sort((a, b) => {
+                const urgencyOrder = {'CRITICAL': 0, 'URGENT': 1, 'SOON': 2, 'NONE': 3};
+                return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+            });
+            
+            const rows = sorted.map((rec, index) => {
+                let priorityIcon = '🟢';
+                let rowClass = '';
+                
+                if (rec.urgency === 'CRITICAL') {
+                    priorityIcon = '🔴';
+                    rowClass = 'highlight-critical';
+                } else if (rec.urgency === 'URGENT') {
+                    priorityIcon = '🟠';
+                    rowClass = 'highlight-warning';
+                } else if (rec.urgency === 'SOON') {
+                    priorityIcon = '🟡';
+                }
+                
+                return `
+                    <tr class="${rowClass}">
+                        <td class="text-center">${priorityIcon}</td>
+                        <td class="font-medium">${rec.sku}</td>
+                        <td class="metric-value">${rec.current_stock.toFixed(0)}</td>
+                        <td class="metric-value">${rec.scaled_velocity.toFixed(2)}</td>
+                        <td class="metric-value">${rec.days_until_stockout.toFixed(1)}</td>
+                        <td class="metric-value">${rec.reorder_point.toFixed(0)}</td>
+                        <td class="metric-value font-bold">${rec.order_quantity.toFixed(0)}</td>
+                        <td class="text-center">
+                            <span class="status-${rec.status.toLowerCase().replace('_', '-')}">
+                                ${rec.status.replace('_', ' ')}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            ${rec.order_needed ? 
+                                '<button class="btn-success text-xs">Order</button>' : 
+                                '<span class="text-gray-400">-</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            tbody.innerHTML = rows;
+        }
+
+        function updateMathTable(recommendations) {
+            const tbody = document.getElementById('math-body');
+            const fromDate = document.getElementById('analysis-from').value;
+            const toDate = document.getElementById('analysis-to').value;
+            
+            const daysDiff = Math.ceil((new Date(toDate) - new Date(fromDate)) / (1000 * 60 * 60 * 24)) + 1;
+            
+            const rows = recommendations.map(rec => {
+                const periodSales = rec.scaled_velocity * daysDiff;
+                
+                return `
+                    <tr>
+                        <td class="font-medium">${rec.sku}</td>
+                        <td class="metric-value">${periodSales.toFixed(1)}</td>
+                        <td class="metric-value">${daysDiff}</td>
+                        <td class="metric-value">${(periodSales/daysDiff).toFixed(3)}</td>
+                        <td class="metric-value">${document.getElementById('scale-factor').value}</td>
+                        <td class="metric-value">${rec.lead_time_demand.toFixed(1)}</td>
+                        <td class="metric-value">${rec.safety_stock.toFixed(1)}</td>
+                        <td class="metric-value font-bold">${rec.reorder_point.toFixed(1)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            tbody.innerHTML = rows;
+        }
+
+        function updateSummaryCards(summary) {
+            document.getElementById('critical-count').textContent = summary.critical || '0';
+            document.getElementById('urgent-count').textContent = summary.urgent || '0';
+            document.getElementById('warning-count').textContent = '0'; // Calculate if needed
+            document.getElementById('ok-count').textContent = 
+                (summary.total_skus - summary.orders_needed) || '0';
+        }
+
+        // CSV Export Function
+        function exportTableToCSV(tableId, filename) {
+            const table = document.getElementById(tableId);
+            const rows = table.querySelectorAll('tr');
+            const csv = [];
+            
+            rows.forEach(row => {
+                const cols = row.querySelectorAll('td, th');
+                const rowData = [];
+                
+                cols.forEach(col => {
+                    // Remove any HTML tags and get text content
+                    let text = col.textContent.trim();
+                    // Handle cells with commas
+                    if (text.includes(',')) {
+                        text = `"${text}"`;
+                    }
+                    rowData.push(text);
+                });
+                
+                csv.push(rowData.join(','));
+            });
+            
+            // Create download link
+            const csvContent = csv.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        // Print Purchase Order
+        function printPurchaseOrder() {
+            const printWindow = window.open('', '_blank');
+            const table = document.getElementById('recommendations-table').cloneNode(true);
+            
+            // Filter to only show items that need ordering
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const orderQty = row.cells[6].textContent;
+                if (orderQty === '0') {
+                    row.remove();
+                }
+            });
+            
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>Purchase Order</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        h1 { color: #333; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #f2f2f2; }
+                        .date { margin-bottom: 20px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Purchase Order</h1>
+                    <div class="date">Date: ${new Date().toLocaleDateString()}</div>
+                    ${table.outerHTML}
+                    <script>window.print();</script>
+                </body>
+                </html>
+            `);
+        }
+    </script>
+</body>
+</html>
