@@ -38,7 +38,18 @@ class UnifiedCin7Client:
     
     def init_database(self):
         """Initialize database"""
-        conn = sqlite3.connect('stock_forecast.db')
+        # Use persistent disk path in production, local path in development
+        db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+        
+        # If no custom path set, check for Render persistent disk
+        if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+            db_path = '/data/db/stock_forecast.db'
+        
+        # Ensure directory exists for persistent storage
+        if db_path != 'stock_forecast.db':
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -107,7 +118,13 @@ class UnifiedCin7Client:
             result = self._make_request('/SaleList', params)
             orders = result.get('SaleList', [])[:max_orders]
             
-            conn = sqlite3.connect('stock_forecast.db')
+            db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+            
+            # If no custom path set, check for Render persistent disk
+            if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+                db_path = '/data/db/stock_forecast.db'
+            
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             
             stored_lines = 0
@@ -293,7 +310,13 @@ class UnifiedCin7Client:
         try:
             logger.info(f"🔄 Starting recent orders sync since {created_since}")
 
-            conn = sqlite3.connect('stock_forecast.db')
+            db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+            
+            # If no custom path set, check for Render persistent disk
+            if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+                db_path = '/data/db/stock_forecast.db'
+            
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
             # Track results
@@ -450,7 +473,14 @@ class UnifiedCin7Client:
 cin7_client = UnifiedCin7Client()
 
 def get_db():
-    conn = sqlite3.connect('stock_forecast.db')
+    # Use same database path as the client
+    db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+    
+    # If no custom path set, check for Render persistent disk
+    if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+        db_path = '/data/db/stock_forecast.db'
+    
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1128,9 +1158,21 @@ def manage_selected_skus():
     if request.method == 'GET':
         try:
             # Try to read from a simple file-based storage
+            import json
+            db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+            
+            # Check for Render persistent disk
+            if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+                skus_file = '/data/db/selected_skus.json'
+            else:
+                data_dir = os.path.dirname(db_path)
+                if data_dir and data_dir != '.':
+                    skus_file = os.path.join(data_dir, 'selected_skus.json')
+                else:
+                    skus_file = 'selected_skus.json'
+            
             try:
-                with open('selected_skus.json', 'r') as f:
-                    import json
+                with open(skus_file, 'r') as f:
                     data = json.load(f)
                     return jsonify({
                         'success': True,
@@ -1151,9 +1193,21 @@ def manage_selected_skus():
             data = request.get_json()
             selected_skus = data.get('selected_skus', [])
             
-            # Save to file
+            # Save to file (use persistent path if available)
             import json
-            with open('selected_skus.json', 'w') as f:
+            db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+            
+            # Check for Render persistent disk
+            if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+                skus_file = '/data/db/selected_skus.json'
+            else:
+                data_dir = os.path.dirname(db_path)
+                if data_dir and data_dir != '.':
+                    skus_file = os.path.join(data_dir, 'selected_skus.json')
+                else:
+                    skus_file = 'selected_skus.json'
+            
+            with open(skus_file, 'w') as f:
                 json.dump({'skus': selected_skus}, f)
             
             return jsonify({
@@ -1168,11 +1222,23 @@ def get_selected_skus():
     """Helper function to get currently selected SKUs"""
     try:
         import json
-        with open('selected_skus.json', 'r') as f:
+        db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
+        
+        # Check for Render persistent disk
+        if db_path == 'stock_forecast.db' and os.path.exists('/data/db'):
+            skus_file = '/data/db/selected_skus.json'
+        else:
+            data_dir = os.path.dirname(db_path)
+            if data_dir and data_dir != '.':
+                skus_file = os.path.join(data_dir, 'selected_skus.json')
+            else:
+                skus_file = 'selected_skus.json'
+        
+        with open(skus_file, 'r') as f:
             data = json.load(f)
             return data.get('skus', [])
     except FileNotFoundError:
-        # Default to OB families if no selection
+        # Default to empty if no selection
         return []
     except Exception:
         return []

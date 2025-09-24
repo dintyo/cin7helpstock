@@ -35,6 +35,7 @@ In the Render dashboard, add these environment variables:
 
 **Optional:**
 - `CIN7_BASE_URL` = https://inventory.dearsystems.com/ExternalApi/v2 (default)
+- `DATABASE_PATH` = /data/db/stock_forecast.db (if using custom path)
 
 ### 4. Deploy
 Click "Create Web Service" - Render will:
@@ -45,10 +46,22 @@ Click "Create Web Service" - Render will:
 
 ## Important Notes
 
-### Database Persistence
-- **Current:** Uses SQLite (ephemeral on Render)
-- **Recommended:** Add Render PostgreSQL for persistence
-- **Impact:** Data will be lost on restarts/redeploys
+### Database Persistence Options
+
+#### Option 1: Persistent Disk with SQLite (Recommended)
+1. In Render service settings, go to **"Disks"**
+2. Add new disk:
+   - **Mount Path:** `/data/db` (your current setup)
+   - **Size:** 5GB (your current setup)
+3. **No environment variable needed** - app auto-detects `/data/db`
+
+#### Option 2: Render PostgreSQL
+- Add Render PostgreSQL service
+- More complex but better for high-traffic apps
+
+#### Option 3: External Database
+- Use external PostgreSQL/MySQL service
+- Best for multi-service architectures
 
 ### First Time Setup
 After deployment, you'll need to:
