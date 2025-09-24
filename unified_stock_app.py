@@ -2,7 +2,7 @@
 Unified Stock Forecasting App
 Single app with sync + analysis + web interface
 """
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from flask_cors import CORS
 from dotenv import load_dotenv
 import sqlite3
@@ -12,6 +12,7 @@ import os
 from datetime import datetime, timedelta
 import logging
 from typing import Dict, List, Optional
+import secrets
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +20,27 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
+
+# Set secret key for sessions
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(16))
+
+# Password protection
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
+
+def require_auth(f):
+    """Decorator to require password authentication"""
+    def decorated_function(*args, **kwargs):
+        # Skip auth if no password is set (development)
+        if not ADMIN_PASSWORD:
+            return f(*args, **kwargs)
+        
+        # Check if user is authenticated
+        if not session.get('authenticated'):
+            return redirect(url_for('login'))
+        
+        return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
 
 class UnifiedCin7Client:
     """Unified Cin7 client with sync and analysis capabilities"""
@@ -512,22 +534,49 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Simple password login"""
+    # If no password is set, redirect to dashboard
+    if not ADMIN_PASSWORD:
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == ADMIN_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('dashboard'))
+        else:
+            return render_template('login.html', error='Invalid password')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session"""
+    session.clear()
+    return redirect(url_for('login'))
+
 @app.route('/')
+@require_auth
 def dashboard():
     """Main unified dashboard"""
     return render_template('enhanced_unified_dashboard.html')
 
 @app.route('/reorder')
+@require_auth
 def reorder_dashboard():
     """Enhanced reorder dashboard with mathematical explanations"""
     return render_template('enhanced_reorder_dashboard.html')
 
 @app.route('/sku-management')
+@require_auth
 def sku_management():
     """SKU management page for selecting which SKUs to analyze"""
     return render_template('sku_management.html')
 
 @app.route('/api/dashboard/status')
+@require_auth
 def dashboard_status():
     """Get current status"""
     try:
@@ -558,6 +607,7 @@ def dashboard_status():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sync/window')
+@require_auth
 def sync_window():
     """Sync specific date window"""
     start_date = request.args.get('start', '2025-09-01')
@@ -568,6 +618,7 @@ def sync_window():
     return jsonify(result)
 
 @app.route('/api/sync/comprehensive')
+@require_auth
 def sync_comprehensive():
     """Comprehensive historical sync using CreatedSince approach"""
     try:

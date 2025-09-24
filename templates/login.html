@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Stock Forecasting</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center">
+    <div class="max-w-md w-full space-y-8">
+        <div>
+            <h1 class="text-center text-3xl font-bold text-gray-900">📦 Stock Forecasting</h1>
+            <p class="mt-2 text-center text-sm text-gray-600">Enter password to access the application</p>
+        </div>
+        
+        <form method="POST" class="mt-8 space-y-6">
+            <div class="bg-white p-8 rounded-lg shadow">
+                {% if error %}
+                    <div class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                        {{ error }}
+                    </div>
+                {% endif %}
+                
+                <div>
+                    <label for="password" class="sr-only">Password</label>
+                    <input 
+                        id="password" 
+                        name="password" 
+                        type="password" 
+                        required 
+                        class="relative block w-full px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10 text-lg"
+                        placeholder="Enter password"
+                        autofocus
+                    >
+                </div>
+                
+                <div class="mt-6">
+                    <button 
+                        type="submit"
+                        class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-lg font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                    >
+                        🔓 Access Dashboard
+                    </button>
+                </div>
+            </div>
+        </form>
+        
+        <div class="text-center">
+            <p class="text-xs text-gray-500">
+                This application contains sensitive business data.<br>
+                Authorized access only.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-focus password field
+        document.getElementById('password').focus();
+        
+        // Handle form submission
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const button = document.querySelector('button[type="submit"]');
+            button.innerHTML = '🔄 Checking...';
+            button.disabled = true;
+        });
+    </script>
+</body>
+</html>
