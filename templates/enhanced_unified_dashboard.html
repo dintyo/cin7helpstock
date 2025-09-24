@@ -122,11 +122,33 @@
             <!-- Sync Controls -->
             <div class="mt-4 flex gap-3">
                 <button onclick="syncRecentOrders()" class="btn-primary">
-                    🔄 Sync Recent Orders
+                    🔄 Sync Recent Orders (30 days)
+                </button>
+                <button onclick="syncAllOrders()" class="btn-primary bg-purple-600 hover:bg-purple-700">
+                    📈 Sync All Orders (Full History)
                 </button>
                 <button onclick="syncLiveStock()" class="btn-secondary">
                     📊 Update Stock Levels
                 </button>
+            </div>
+            
+            <!-- Sync Progress -->
+            <div id="sync-progress" class="mt-4 hidden">
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
+                        <span id="sync-status" class="text-blue-800 font-medium">Starting sync...</span>
+                    </div>
+                    <div class="mt-2">
+                        <div class="bg-blue-200 rounded-full h-2">
+                            <div id="sync-progress-bar" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-blue-600 mt-1">
+                            <span id="sync-current">0</span>
+                            <span id="sync-total">0</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -700,6 +722,127 @@
                 </body>
                 </html>
             `);
+        }
+
+        // Sync Functions
+        async function syncRecentOrders() {
+            showSyncProgress('🔄 Syncing recent orders (last 30 days)...');
+            
+            try {
+                const response = await fetch('/api/sync/recent?days=30&max=1000');
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateSyncProgress(100, `✅ Synced ${result.lines_stored} order lines from ${result.orders_found} orders`);
+                    setTimeout(() => {
+                        hideSyncProgress();
+                        loadDashboardData(); // Refresh the dashboard
+                    }, 2000);
+                } else {
+                    updateSyncProgress(0, `❌ Sync failed: ${result.error}`);
+                    setTimeout(hideSyncProgress, 3000);
+                }
+            } catch (error) {
+                updateSyncProgress(0, `❌ Network error: ${error.message}`);
+                setTimeout(hideSyncProgress, 3000);
+            }
+        }
+
+        async function syncAllOrders() {
+            if (!confirm('⚠️ This will sync ALL historical orders using CreatedSince and may take 20+ minutes. Continue?')) {
+                return;
+            }
+            
+            showSyncProgress('📈 Starting comprehensive CreatedSince sync...');
+            
+            try {
+                const response = await fetch('/api/sync/comprehensive');
+                
+                // Check if response is ok
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateSyncProgress(100, `🎉 ${result.message}`);
+                    
+                    // Show detailed results
+                    console.log('📊 Comprehensive Sync Results:', result.batch_details);
+                    
+                    setTimeout(() => {
+                        hideSyncProgress();
+                        loadDashboardData();
+                        alert(`✅ Comprehensive sync complete!\n\n📊 Results:\n• ${result.total_lines} order lines\n• ${result.total_orders} orders\n• ${result.batches_completed} batches successful\n• ${result.batches_failed} batches failed`);
+                    }, 3000);
+                } else {
+                    updateSyncProgress(0, `❌ Comprehensive sync failed: ${result.error}`);
+                    setTimeout(hideSyncProgress, 5000);
+                }
+                
+            } catch (error) {
+                updateSyncProgress(0, `❌ Network/Server error: ${error.message}`);
+                setTimeout(hideSyncProgress, 5000);
+                console.error('Comprehensive sync error:', error);
+            }
+        }
+
+        async function syncLiveStock() {
+            showSyncProgress('📊 Updating live stock levels from Cin7...');
+            
+            try {
+                const response = await fetch('/api/sync/stock-live');
+                const result = await response.json();
+                
+                if (result.success) {
+                    updateSyncProgress(100, `✅ Updated ${result.skus_updated} SKU stock levels`);
+                    setTimeout(() => {
+                        hideSyncProgress();
+                        loadDashboardData();
+                    }, 2000);
+                } else {
+                    updateSyncProgress(0, `❌ Stock sync failed: ${result.error}`);
+                    setTimeout(hideSyncProgress, 3000);
+                }
+            } catch (error) {
+                updateSyncProgress(0, `❌ Network error: ${error.message}`);
+                setTimeout(hideSyncProgress, 3000);
+            }
+        }
+
+        function showSyncProgress(message) {
+            document.getElementById('sync-progress').classList.remove('hidden');
+            document.getElementById('sync-status').textContent = message;
+            document.getElementById('sync-progress-bar').style.width = '0%';
+        }
+
+        function updateSyncProgress(percentage, message) {
+            document.getElementById('sync-progress-bar').style.width = percentage + '%';
+            document.getElementById('sync-status').textContent = message;
+        }
+
+        function hideSyncProgress() {
+            document.getElementById('sync-progress').classList.add('hidden');
+        }
+
+        // Load dashboard data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboardData();
+        });
+
+        async function loadDashboardData() {
+            try {
+                // Load basic stats
+                const response = await fetch('/api/dashboard/status');
+                const data = await response.json();
+                
+                document.getElementById('total-orders').textContent = data.total_orders || '0';
+                // Add more dashboard updates here
+                
+            } catch (error) {
+                console.error('Failed to load dashboard data:', error);
+            }
         }
     </script>
 </body>

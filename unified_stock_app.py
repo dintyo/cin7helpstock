@@ -308,7 +308,7 @@ class UnifiedCin7Client:
     def sync_recent_orders(self, created_since: str, max_orders: int = 500):
         """Sync recent orders using CreatedSince (the working date filter)"""
         try:
-            logger.info(f"🔄 Starting recent orders sync since {created_since}")
+            logger.info(f"🚀 Starting OPTIMIZED recent orders sync since {created_since}")
 
             db_path = os.environ.get('DATABASE_PATH', 'stock_forecast.db')
             
@@ -319,22 +319,31 @@ class UnifiedCin7Client:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
+            # OPTIMIZATION 1: Preload existing orders to skip API calls
+            logger.info("⚡ Preloading existing orders...")
+            cursor.execute('SELECT DISTINCT reference_id FROM orders WHERE reference_id IS NOT NULL')
+            existing_orders = {row[0] for row in cursor.fetchall()}
+            logger.info(f"📋 Found {len(existing_orders)} existing orders to skip")
+
             # Track results
             orders_found = 0
             stored_lines = 0
+            skipped_existing = 0
+            batch_data = []  # For batch inserts
 
             # Fetch orders using CreatedSince
             page = 1
             total_fetched = 0
 
             while page <= 20 and total_fetched < max_orders:  # Safety limits
+                # OPTIMIZATION 2: Use maximum page size
                 params = {
                     'Page': page,
-                    'Limit': min(1000, max_orders - total_fetched),
+                    'Limit': 1000,  # Maximum page size for speed
                     'CreatedSince': created_since
                 }
 
-                logger.info(f"📋 Fetching page {page} with CreatedSince...")
+                logger.info(f"📋 Fetching page {page} with CreatedSince (limit: 1000)...")
 
                 result = self._make_request('/SaleList', params)
                 orders = result.get('SaleList', [])
@@ -348,16 +357,30 @@ class UnifiedCin7Client:
 
                 logger.info(f"📄 Page {page}: {len(orders)} orders")
 
-                # Process each order
+                # OPTIMIZATION 3: Filter orders before expensive detail calls
+                orders_to_detail = []
+                
                 for order in orders:
                     if order.get('Status', '').upper() == 'VOIDED':
                         continue
 
-                    # Get order detail to extract line items
                     sale_id = order.get('SaleID')
                     if not sale_id:
                         continue
 
+                    # Skip existing orders (avoid API call)
+                    if sale_id in existing_orders:
+                        skipped_existing += 1
+                        continue
+
+                    orders_to_detail.append(order)
+
+                logger.info(f"   📊 Processing {len(orders_to_detail)} new orders (skipped {skipped_existing} existing)")
+
+                # Process only new orders
+                for order in orders_to_detail:
+                    sale_id = order.get('SaleID')
+                    
                     try:
                         detail = self._make_request('/Sale', {'ID': sale_id})
 
@@ -394,16 +417,16 @@ class UnifiedCin7Client:
 
                         logger.info(f"   📦 Order {order.get('OrderNumber')}: {len(pick_lines)} pick lines, {len(order_lines)} order lines")
 
+                        # OPTIMIZATION 4: Batch data collection instead of individual inserts
                         for line in lines_to_process:
                             sku = line['sku']
                             quantity = line['quantity']
-                            description = line['description']
                             location = line['location']
 
                             if not sku or quantity <= 0:
                                 continue
 
-                            # Map warehouse from location
+                            # Map warehouse from location (improved logic)
                             warehouse = 'NSW'  # Default
                             if location:
                                 if 'CNTVIC' in location or 'VIC' in location:
@@ -411,23 +434,11 @@ class UnifiedCin7Client:
                                 elif 'WCLQLD' in location or 'QLD' in location:
                                     warehouse = 'QLD'
 
+                            # Create unique reference_id for this line
                             reference_id = f"{sale_id}:{sku}"
 
-                            # Check if exists
-                            cursor.execute('SELECT id FROM orders WHERE reference_id = ?', (reference_id,))
-                            if cursor.fetchone():
-                                continue
-
-                            # Add product if needed
-                            cursor.execute('INSERT OR IGNORE INTO products (sku, description) VALUES (?, ?)',
-                                         (sku, description))
-
-                            # Add order
-                            cursor.execute('''
-                                INSERT INTO orders
-                                (order_number, sku, quantity, warehouse, booking_date, reference_id)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                            ''', (
+                            # Add to batch instead of immediate insert
+                            batch_data.append((
                                 order.get('OrderNumber', ''),
                                 sku,
                                 quantity,
@@ -436,11 +447,28 @@ class UnifiedCin7Client:
                                 reference_id
                             ))
 
-                            stored_lines += 1
-
                     except Exception as e:
                         logger.error(f"Error processing order {sale_id}: {e}")
                         continue
+
+                # OPTIMIZATION 5: Batch insert after processing page
+                if batch_data:
+                    # Add products first (batch)
+                    product_batch = list(set([(item[1], item[1]) for item in batch_data]))  # sku, description
+                    cursor.executemany('INSERT OR IGNORE INTO products (sku, description) VALUES (?, ?)', 
+                                     product_batch)
+                    
+                    # Add orders (batch)
+                    cursor.executemany('''
+                        INSERT OR IGNORE INTO orders 
+                        (order_number, sku, quantity, warehouse, booking_date, reference_id)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', batch_data)
+                    
+                    stored_lines += len(batch_data)
+                    conn.commit()  # Commit after each page
+                    logger.info(f"   💾 Batch inserted {len(batch_data)} lines from page {page}")
+                    batch_data = []
 
                 if len(orders) < 1000:
                     break
@@ -448,17 +476,17 @@ class UnifiedCin7Client:
                 page += 1
                 time.sleep(1.2)  # Rate limiting between pages
 
-            conn.commit()
             conn.close()
 
-            logger.info(f"✅ Recent sync complete: {stored_lines} lines from {orders_found} orders")
+            logger.info(f"✅ OPTIMIZED sync complete: {stored_lines} lines from {orders_found} orders (skipped {skipped_existing} existing)")
 
             return {
                 'success': True,
                 'orders_found': orders_found,
                 'lines_stored': stored_lines,
+                'skipped_existing': skipped_existing,
                 'created_since': created_since,
-                'method': 'CreatedSince'
+                'method': 'CreatedSince_Optimized'
             }
 
         except Exception as e:
@@ -539,6 +567,107 @@ def sync_window():
     result = cin7_client.sync_date_window(start_date, end_date, max_orders)
     return jsonify(result)
 
+@app.route('/api/sync/comprehensive')
+def sync_comprehensive():
+    """Comprehensive historical sync using CreatedSince approach"""
+    try:
+        logger.info("🚀 Starting comprehensive historical sync using CreatedSince")
+        
+        from datetime import datetime, timedelta
+        import pytz
+        import time
+        
+        # GMT+10 timezone
+        tz = pytz.timezone('Australia/Sydney')
+        now_local = datetime.now(tz)
+        
+        # Define sync batches by days back (CreatedSince approach)
+        # Start recent and work backwards
+        batches = [
+            (30, 'Last 30 days', 1000),
+            (90, 'Last 3 months', 1500), 
+            (180, 'Last 6 months', 2000),
+            (365, 'Last year', 2500),
+            (730, 'Last 2 years', 3000)
+        ]
+        
+        total_orders = 0
+        total_lines = 0
+        batch_results = []
+        last_created_since = None
+        
+        for i, (days_back, label, max_orders) in enumerate(batches):
+            # Skip if this batch overlaps with previous
+            if last_created_since and days_back <= last_created_since:
+                continue
+                
+            logger.info(f"📅 Syncing batch {i+1}/{len(batches)}: {label}")
+            
+            try:
+                # Calculate CreatedSince date
+                since_date = now_local - timedelta(days=days_back)
+                created_since = since_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+                
+                logger.info(f"🔄 Using CreatedSince: {created_since}")
+                
+                result = cin7_client.sync_recent_orders(created_since, max_orders)
+                
+                if result.get('success'):
+                    batch_orders = result.get('orders_found', 0)
+                    batch_lines = result.get('lines_stored', 0)
+                    total_orders += batch_orders
+                    total_lines += batch_lines
+                    
+                    batch_results.append({
+                        'batch': label,
+                        'orders': batch_orders,
+                        'lines': batch_lines,
+                        'created_since': created_since,
+                        'success': True
+                    })
+                    
+                    logger.info(f"✅ {label}: {batch_lines} lines from {batch_orders} orders")
+                    last_created_since = days_back
+                else:
+                    batch_results.append({
+                        'batch': label,
+                        'error': result.get('error', 'Unknown error'),
+                        'created_since': created_since,
+                        'success': False
+                    })
+                    logger.error(f"❌ {label}: {result.get('error')}")
+                
+                # Pause between batches to respect rate limits
+                time.sleep(5)
+                
+            except Exception as batch_error:
+                logger.error(f"❌ Batch {label} failed: {batch_error}")
+                batch_results.append({
+                    'batch': label,
+                    'error': str(batch_error),
+                    'success': False
+                })
+        
+        logger.info(f"🎉 Comprehensive CreatedSince sync complete: {total_lines} lines from {total_orders} orders")
+        
+        return jsonify({
+            'success': True,
+            'total_orders': total_orders,
+            'total_lines': total_lines,
+            'batches_completed': len([r for r in batch_results if r['success']]),
+            'batches_failed': len([r for r in batch_results if not r['success']]),
+            'batch_details': batch_results,
+            'method': 'CreatedSince',
+            'message': f'Synced {total_lines} order lines from {total_orders} orders using CreatedSince approach'
+        })
+        
+    except Exception as e:
+        logger.error(f"💥 Comprehensive sync failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/sync/recent')
 def sync_recent():
     """Sync recent orders using CreatedSince (the working approach)"""
@@ -557,6 +686,7 @@ def sync_recent():
     
     logger.info(f"🔄 Syncing recent orders since {created_since} (last {days_back} days)")
     
+    # Call the method directly from the client instance
     result = cin7_client.sync_recent_orders(created_since, max_orders)
     return jsonify(result)
 
