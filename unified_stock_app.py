@@ -243,15 +243,21 @@ class UnifiedCin7Client:
                 
                 logger.info(f"📄 Page {page}: {len(items)} stock records")
                 
-                # Filter for OB-ESS and OB-ORG SKUs
-                ob_items = [item for item in items if 
-                           str(item.get('SKU', '')).startswith('OB-ESS-') or 
-                           str(item.get('SKU', '')).startswith('OB-ORG-')]
+                # Get selected SKUs for filtering (or all if none selected)
+                selected_skus = get_selected_skus()
                 
-                logger.info(f"🎯 Found {len(ob_items)} OB-ESS/OB-ORG items on page {page}")
+                if selected_skus:
+                    # Filter for selected SKUs only
+                    filtered_items = [item for item in items if 
+                                    str(item.get('SKU', '')) in selected_skus]
+                    logger.info(f"🎯 Found {len(filtered_items)} selected SKUs on page {page}")
+                else:
+                    # If no selection, get all items
+                    filtered_items = items
+                    logger.info(f"📦 Found {len(filtered_items)} total items on page {page}")
                 
                 # Aggregate stock by SKU across all locations
-                for item in ob_items:
+                for item in filtered_items:
                     sku = item.get('SKU', '')
                     on_hand = float(item.get('OnHand', 0))
                     
@@ -458,6 +464,11 @@ def reorder_dashboard():
     """Enhanced reorder dashboard with mathematical explanations"""
     return render_template('enhanced_reorder_dashboard.html')
 
+@app.route('/sku-management')
+def sku_management():
+    """SKU management page for selecting which SKUs to analyze"""
+    return render_template('sku_management.html')
+
 @app.route('/api/dashboard/status')
 def dashboard_status():
     """Get current status"""
@@ -614,22 +625,43 @@ def get_period_analysis():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Get SKUs with sales data in the specified period
-        # Filter for OB-ESS-* and OB-ORG-* patterns
-        cursor.execute('''
-            SELECT 
-                sku,
-                SUM(quantity) as total_quantity,
-                COUNT(*) as order_count,
-                MIN(booking_date) as first_sale,
-                MAX(booking_date) as last_sale
-            FROM orders 
-            WHERE booking_date BETWEEN ? AND ?
-                AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%')
-            GROUP BY sku
-            HAVING total_quantity > 0
-            ORDER BY total_quantity DESC
-        ''', (from_date, to_date))
+        # Get selected SKUs for analysis
+        selected_skus = get_selected_skus()
+        
+        if not selected_skus:
+            # Fallback to OB families if no selection
+            cursor.execute('''
+                SELECT 
+                    sku,
+                    SUM(quantity) as total_quantity,
+                    COUNT(*) as order_count,
+                    MIN(booking_date) as first_sale,
+                    MAX(booking_date) as last_sale
+                FROM orders 
+                WHERE booking_date BETWEEN ? AND ?
+                    AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%')
+                GROUP BY sku
+                HAVING total_quantity > 0
+                ORDER BY total_quantity DESC
+            ''', (from_date, to_date))
+        else:
+            # Use selected SKUs with proper SQL placeholder handling
+            placeholders = ','.join(['?' for _ in selected_skus])
+            query = f'''
+                SELECT 
+                    sku,
+                    SUM(quantity) as total_quantity,
+                    COUNT(*) as order_count,
+                    MIN(booking_date) as first_sale,
+                    MAX(booking_date) as last_sale
+                FROM orders 
+                WHERE booking_date BETWEEN ? AND ?
+                    AND sku IN ({placeholders})
+                GROUP BY sku
+                HAVING total_quantity > 0
+                ORDER BY total_quantity DESC
+            '''
+            cursor.execute(query, (from_date, to_date) + tuple(selected_skus))
         
         # Calculate the total days in the analysis period
         period_start = datetime.strptime(from_date, '%Y-%m-%d')
@@ -702,18 +734,39 @@ def get_current_stock():
         # For now, let's calculate based on our sales velocity and assume starting stock
         # This is a simplified approach until we implement arrivals tracking
         
-        cursor.execute('''
-            SELECT 
-                sku,
-                SUM(quantity) as total_sold,
-                COUNT(*) as order_count,
-                MIN(booking_date) as first_sale,
-                MAX(booking_date) as last_sale
-            FROM orders 
-            WHERE sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%'
-            GROUP BY sku
-            ORDER BY sku
-        ''')
+        # Get selected SKUs for analysis
+        selected_skus = get_selected_skus()
+        
+        if not selected_skus:
+            # Fallback to OB families if no selection
+            cursor.execute('''
+                SELECT 
+                    sku,
+                    SUM(quantity) as total_sold,
+                    COUNT(*) as order_count,
+                    MIN(booking_date) as first_sale,
+                    MAX(booking_date) as last_sale
+                FROM orders 
+                WHERE sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%'
+                GROUP BY sku
+                ORDER BY sku
+            ''')
+        else:
+            # Use selected SKUs
+            placeholders = ','.join(['?' for _ in selected_skus])
+            query = f'''
+                SELECT 
+                    sku,
+                    SUM(quantity) as total_sold,
+                    COUNT(*) as order_count,
+                    MIN(booking_date) as first_sale,
+                    MAX(booking_date) as last_sale
+                FROM orders 
+                WHERE sku IN ({placeholders})
+                GROUP BY sku
+                ORDER BY sku
+            '''
+            cursor.execute(query, tuple(selected_skus))
         
         stock_data = {}
         
@@ -840,7 +893,7 @@ def get_recommendations():
                     'current_vs_rop': current_stock - reorder_point,
                     'current_vs_safety': current_stock - safety_stock,
                     'expected_stock_at_delivery': current_stock - lead_time_demand,
-                    'stock_after_order': current_stock - lead_time_demand + order_quantity,
+                    'stock_after_order': current_stock + order_quantity,
                     'deficit_to_rop': max(0, reorder_point - current_stock),
                     'buffer_stock_ordered': monthly_velocity * buffer_months if order_quantity > 0 else 0
                 }
@@ -981,13 +1034,160 @@ def reorder_analysis():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# SKU Management API endpoints
+@app.route('/api/skus/all')
+def get_all_skus():
+    """Get all available SKUs with sales data"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get all SKUs with their sales statistics
+        cursor.execute('''
+            SELECT 
+                sku,
+                SUM(quantity) as total_quantity,
+                COUNT(*) as order_count,
+                MIN(booking_date) as first_sale,
+                MAX(booking_date) as last_sale
+            FROM orders 
+            GROUP BY sku
+            HAVING total_quantity > 0
+            ORDER BY total_quantity DESC
+        ''')
+        
+        skus = []
+        for row in cursor.fetchall():
+            skus.append({
+                'sku': row['sku'],
+                'total_quantity': row['total_quantity'],
+                'order_count': row['order_count'],
+                'first_sale': row['first_sale'],
+                'last_sale': row['last_sale']
+            })
+        
+        # Get summary statistics
+        cursor.execute('SELECT COUNT(DISTINCT sku) as total FROM orders')
+        total_skus = cursor.fetchone()['total']
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'skus': skus,
+            'total_skus': total_skus,
+            'skus_with_sales': len(skus)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/skus/top-selling')
+def get_top_selling_skus():
+    """Get top selling SKUs"""
+    try:
+        limit = int(request.args.get('limit', 20))
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                sku,
+                SUM(quantity) as total_quantity,
+                COUNT(*) as order_count
+            FROM orders 
+            GROUP BY sku
+            HAVING total_quantity > 0
+            ORDER BY total_quantity DESC
+            LIMIT ?
+        ''', (limit,))
+        
+        skus = []
+        for row in cursor.fetchall():
+            skus.append({
+                'sku': row['sku'],
+                'total_quantity': row['total_quantity'],
+                'order_count': row['order_count']
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'skus': skus
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/skus/selected', methods=['GET', 'POST'])
+def manage_selected_skus():
+    """Get or set selected SKUs for analysis"""
+    
+    if request.method == 'GET':
+        try:
+            # Try to read from a simple file-based storage
+            try:
+                with open('selected_skus.json', 'r') as f:
+                    import json
+                    data = json.load(f)
+                    return jsonify({
+                        'success': True,
+                        'selected_skus': data.get('skus', [])
+                    })
+            except FileNotFoundError:
+                # Default to empty if no selection saved
+                return jsonify({
+                    'success': True,
+                    'selected_skus': []
+                })
+                
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+    
+    elif request.method == 'POST':
+        try:
+            data = request.get_json()
+            selected_skus = data.get('selected_skus', [])
+            
+            # Save to file
+            import json
+            with open('selected_skus.json', 'w') as f:
+                json.dump({'skus': selected_skus}, f)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Saved {len(selected_skus)} SKUs for analysis'
+            })
+            
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+def get_selected_skus():
+    """Helper function to get currently selected SKUs"""
+    try:
+        import json
+        with open('selected_skus.json', 'r') as f:
+            data = json.load(f)
+            return data.get('skus', [])
+    except FileNotFoundError:
+        # Default to OB families if no selection
+        return []
+    except Exception:
+        return []
+
 if __name__ == '__main__':
+    # Get port from environment variable (for production) or use default
+    port = int(os.environ.get('PORT', 5050))
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    
     print("🚀 UNIFIED Stock Forecasting App")
-    print("📊 Dashboard: http://localhost:5050")
+    print(f"📊 Dashboard: http://localhost:{port}")
     print("🔧 Features:")
     print("  ✅ Date window sync")
     print("  ✅ Business analysis")
     print("  ✅ Purchase recommendations")
     print("  ✅ Unified interface")
     
-    app.run(debug=True, port=5050)
+    app.run(debug=debug, host='0.0.0.0', port=port)

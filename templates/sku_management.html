@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKU Management - Stock Forecasting</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .sku-tag {
+            transition: all 0.2s ease;
+        }
+        .sku-tag:hover {
+            transform: scale(1.05);
+        }
+        .search-dropdown {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-xl font-semibold text-gray-900">📦 Stock Forecasting</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    <a href="/reorder" class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Reorder Analysis</a>
+                    <a href="/sku-management" class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium">SKU Management</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">🏷️ SKU Management</h1>
+            <p class="mt-2 text-gray-600">Select which SKUs to include in your stock forecasting analysis</p>
+        </div>
+
+        <!-- Main Content -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Left Column: SKU Search & Add -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-4">🔍 Add SKUs</h2>
+                
+                <!-- Search Input -->
+                <div class="relative mb-4">
+                    <input 
+                        type="text" 
+                        id="sku-search" 
+                        placeholder="Search SKUs..." 
+                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        autocomplete="off"
+                    >
+                    
+                    <!-- Search Results Dropdown -->
+                    <div id="search-results" class="hidden absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg search-dropdown">
+                        <!-- Results populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Quick Add Buttons -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Quick Add:</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="addSkuFamily('OB-ESS-')" class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition-colors">
+                            + All OB-ESS-* SKUs
+                        </button>
+                        <button onclick="addSkuFamily('OB-ORG-')" class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm hover:bg-green-200 transition-colors">
+                            + All OB-ORG-* SKUs
+                        </button>
+                        <button onclick="loadTopSellingSkus()" class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm hover:bg-purple-200 transition-colors">
+                            + Top 20 Selling
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SKU Statistics -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-sm font-medium text-gray-700 mb-2">Database Statistics:</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-600">Total SKUs:</span>
+                            <span id="total-skus" class="font-bold ml-1">-</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">With Sales:</span>
+                            <span id="skus-with-sales" class="font-bold ml-1">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Selected SKUs -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-900">✅ Selected SKUs</h2>
+                    <div class="flex gap-2">
+                        <button onclick="clearAllSkus()" class="px-3 py-1 bg-red-100 text-red-800 rounded text-sm hover:bg-red-200 transition-colors">
+                            Clear All
+                        </button>
+                        <button onclick="saveSkuSelection()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+                            💾 Save Selection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Selected Count -->
+                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <span class="text-blue-800 font-medium">
+                        <span id="selected-count">0</span> SKUs selected for analysis
+                    </span>
+                </div>
+
+                <!-- Selected SKUs Container -->
+                <div id="selected-skus" class="space-y-2 max-h-96 overflow-y-auto">
+                    <!-- Selected SKUs will be populated here -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="text-center py-8 text-gray-500">
+                    <div class="text-4xl mb-2">📦</div>
+                    <p>No SKUs selected</p>
+                    <p class="text-sm">Search and add SKUs from the left panel</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-8 flex justify-center gap-4">
+            <a href="/reorder" class="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
+                🔄 Go to Reorder Analysis
+            </a>
+            <button onclick="previewAnalysis()" class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium">
+                👁️ Preview Analysis
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let allSkus = [];
+        let selectedSkus = new Set();
+        let searchTimeout;
+
+        // Load page data
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSkuData();
+            loadSavedSelection();
+        });
+
+        // Load all available SKUs
+        async function loadSkuData() {
+            try {
+                const response = await fetch('/api/skus/all');
+                const data = await response.json();
+                
+                if (data.success) {
+                    allSkus = data.skus;
+                    document.getElementById('total-skus').textContent = data.total_skus;
+                    document.getElementById('skus-with-sales').textContent = data.skus_with_sales;
+                } else {
+                    console.error('Failed to load SKU data:', data.error);
+                }
+            } catch (error) {
+                console.error('Error loading SKU data:', error);
+            }
+        }
+
+        // Load saved selection
+        async function loadSavedSelection() {
+            try {
+                const response = await fetch('/api/skus/selected');
+                const data = await response.json();
+                
+                if (data.success && data.selected_skus) {
+                    selectedSkus = new Set(data.selected_skus);
+                    updateSelectedDisplay();
+                }
+            } catch (error) {
+                console.error('Error loading saved selection:', error);
+            }
+        }
+
+        // Search functionality
+        document.getElementById('sku-search').addEventListener('input', function(e) {
+            const query = e.target.value.trim();
+            
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                if (query.length >= 2) {
+                    showSearchResults(query);
+                } else {
+                    hideSearchResults();
+                }
+            }, 300);
+        });
+
+        function showSearchResults(query) {
+            const results = allSkus.filter(sku => 
+                sku.sku.toLowerCase().includes(query.toLowerCase()) && 
+                !selectedSkus.has(sku.sku)
+            ).slice(0, 20);
+
+            const resultsDiv = document.getElementById('search-results');
+            
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div class="p-3 text-gray-500 text-sm">No matching SKUs found</div>';
+            } else {
+                resultsDiv.innerHTML = results.map(sku => `
+                    <div class="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0" onclick="addSku('${sku.sku}')">
+                        <div class="font-medium">${sku.sku}</div>
+                        <div class="text-sm text-gray-600">
+                            ${sku.total_quantity} units sold | ${sku.order_count} orders
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            resultsDiv.classList.remove('hidden');
+        }
+
+        function hideSearchResults() {
+            document.getElementById('search-results').classList.add('hidden');
+        }
+
+        // Add individual SKU
+        function addSku(sku) {
+            selectedSkus.add(sku);
+            updateSelectedDisplay();
+            hideSearchResults();
+            document.getElementById('sku-search').value = '';
+        }
+
+        // Remove individual SKU
+        function removeSku(sku) {
+            selectedSkus.delete(sku);
+            updateSelectedDisplay();
+        }
+
+        // Add SKU family
+        async function addSkuFamily(prefix) {
+            const familySkus = allSkus.filter(sku => sku.sku.startsWith(prefix));
+            familySkus.forEach(sku => selectedSkus.add(sku.sku));
+            updateSelectedDisplay();
+        }
+
+        // Load top selling SKUs
+        async function loadTopSellingSkus() {
+            try {
+                const response = await fetch('/api/skus/top-selling?limit=20');
+                const data = await response.json();
+                
+                if (data.success) {
+                    data.skus.forEach(sku => selectedSkus.add(sku.sku));
+                    updateSelectedDisplay();
+                }
+            } catch (error) {
+                console.error('Error loading top selling SKUs:', error);
+            }
+        }
+
+        // Clear all SKUs
+        function clearAllSkus() {
+            if (selectedSkus.size > 0 && confirm(`Remove all ${selectedSkus.size} selected SKUs?`)) {
+                selectedSkus.clear();
+                updateSelectedDisplay();
+            }
+        }
+
+        // Update selected SKUs display
+        function updateSelectedDisplay() {
+            const container = document.getElementById('selected-skus');
+            const emptyState = document.getElementById('empty-state');
+            const countElement = document.getElementById('selected-count');
+            
+            countElement.textContent = selectedSkus.size;
+            
+            if (selectedSkus.size === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                
+                const sortedSkus = Array.from(selectedSkus).sort();
+                container.innerHTML = sortedSkus.map(sku => {
+                    const skuData = allSkus.find(s => s.sku === sku);
+                    const salesInfo = skuData ? `${skuData.total_quantity} sold` : 'No sales data';
+                    
+                    return `
+                        <div class="sku-tag flex items-center justify-between p-3 bg-blue-50 rounded-lg border">
+                            <div>
+                                <span class="font-medium text-blue-900">${sku}</span>
+                                <span class="text-sm text-blue-600 ml-2">(${salesInfo})</span>
+                            </div>
+                            <button onclick="removeSku('${sku}')" class="text-red-600 hover:text-red-800 font-bold text-lg">
+                                ×
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Save selection
+        async function saveSkuSelection() {
+            try {
+                const response = await fetch('/api/skus/selected', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        selected_skus: Array.from(selectedSkus)
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ Saved ${selectedSkus.size} SKUs for analysis`);
+                } else {
+                    alert(`❌ Error saving selection: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error saving selection:', error);
+                alert('❌ Error saving selection');
+            }
+        }
+
+        // Preview analysis
+        async function previewAnalysis() {
+            if (selectedSkus.size === 0) {
+                alert('Please select at least one SKU first');
+                return;
+            }
+            
+            // Save selection first, then redirect
+            await saveSkuSelection();
+            window.location.href = '/reorder';
+        }
+
+        // Hide dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#sku-search') && !e.target.closest('#search-results')) {
+                hideSearchResults();
+            }
+        });
+    </script>
+</body>
+</html>

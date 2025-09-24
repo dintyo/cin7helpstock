@@ -32,9 +32,9 @@
                     <h1 class="text-xl font-bold text-gray-900">📊 Stock Reorder System</h1>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <a href="#" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
-                    <a href="#" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">SKU Management</a>
-                    <a href="#" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">Settings</a>
+                    <a href="/" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    <a href="/reorder" class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium">Reorder Analysis</a>
+                    <a href="/sku-management" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">SKU Management</a>
                 </div>
             </div>
         </div>
@@ -260,8 +260,39 @@
                 </div>
             </div>
             
-            <div id="recommendation-cards" class="space-y-4">
-                <!-- Recommendation cards will be inserted here -->
+            <!-- Recommendations Table -->
+            <div id="recommendations-table-container" class="overflow-x-auto">
+                <table id="recommendations-table" class="min-w-full bg-white border border-gray-200 rounded-lg">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100" onclick="sortTable('recommendations-table', 0)">
+                                SKU ↕️
+                            </th>
+                            <th class="px-4 py-3 text-center text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100" onclick="sortTable('recommendations-table', 1)">
+                                Urgency ↕️
+                            </th>
+                            <th class="px-4 py-3 text-right text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100" onclick="sortTable('recommendations-table', 2)">
+                                Current Stock ↕️
+                            </th>
+                            <th class="px-4 py-3 text-right text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100" onclick="sortTable('recommendations-table', 3)">
+                                Days Until Out ↕️
+                            </th>
+                            <th class="px-4 py-3 text-right text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-100" onclick="sortTable('recommendations-table', 4)">
+                                Order Quantity ↕️
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="recommendations-table-body" class="divide-y divide-gray-200">
+                        <!-- Table rows will be populated by JavaScript -->
+                    </tbody>
+                </table>
+                
+                <!-- Empty state -->
+                <div id="no-recommendations" class="hidden bg-green-50 p-6 rounded-lg text-center mt-4">
+                    <span class="text-4xl mb-3">✅</span>
+                    <p class="text-green-800 font-bold">All SKUs are adequately stocked!</p>
+                    <p class="text-green-600 text-sm mt-2">No immediate orders required</p>
+                </div>
             </div>
         </div>
     </div>
@@ -408,8 +439,9 @@
         }
 
         function displayRecommendations() {
-            const container = document.getElementById('recommendation-cards');
-            container.innerHTML = '';
+            const tbody = document.getElementById('recommendations-table-body');
+            const noRecommendations = document.getElementById('no-recommendations');
+            tbody.innerHTML = '';
 
             // Update summary
             document.getElementById('critical-count').textContent = recommendationsData.summary.critical;
@@ -420,70 +452,48 @@
             // Show only items needing orders
             const itemsToOrder = recommendationsData.recommendations.filter(r => r.order_needed);
 
+            if (itemsToOrder.length === 0) {
+                noRecommendations.classList.remove('hidden');
+                return;
+            }
+
+            noRecommendations.classList.add('hidden');
+
             itemsToOrder.forEach(item => {
                 const urgencyColor = {
                     'CRITICAL': 'red',
-                    'URGENT': 'orange',
+                    'URGENT': 'orange', 
                     'SOON': 'yellow'
                 }[item.urgency] || 'gray';
 
-                const card = `
-                    <div class="border-l-4 border-${urgencyColor}-500 bg-${urgencyColor}-50 p-4 rounded-lg">
-                        <div class="flex justify-between items-start mb-3">
-                            <h3 class="font-bold text-gray-900">${item.sku}</h3>
-                            <span class="px-2 py-1 text-xs font-bold bg-${urgencyColor}-100 text-${urgencyColor}-800 rounded">
-                                ${item.urgency}
-                            </span>
-                        </div>
-                        
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3 text-sm">
-                            <div>
-                                <p class="text-gray-600">Current Stock</p>
-                                <p class="font-bold">${item.current_stock} units</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-600">Days Until Out</p>
-                                <p class="font-bold">${item.days_until_stockout.toFixed(1)} days</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-600">Order Quantity</p>
-                                <p class="font-bold text-${urgencyColor}-700">${item.order_quantity} units</p>
-                            </div>
-                            <div>
-                                <p class="text-gray-600">After Delivery</p>
-                                <p class="font-bold text-green-600">${item.calculations.stock_after_order} units</p>
-                            </div>
-                        </div>
-                        
-                        <div class="bg-white p-3 rounded">
-                            <p class="text-sm font-medium mb-2">📐 Order Calculation (CORRECTED):</p>
-                            <div class="math-step text-xs">
-                                Deficit to ROP: ${item.reorder_point} - ${item.current_stock} = ${item.calculations.deficit_to_rop} units
-                            </div>
-                            <div class="math-step text-xs">
-                                Plus Buffer Stock: ${item.calculations.buffer_stock_ordered.toFixed(0)} units (${(item.calculations.buffer_stock_ordered / 30).toFixed(1)} months)
-                            </div>
-                            <div class="math-step text-xs font-bold">
-                                Total Order: ${item.calculations.deficit_to_rop} + ${item.calculations.buffer_stock_ordered.toFixed(0)} = ${item.order_quantity} units
-                            </div>
-                            <div class="mt-2 text-xs text-green-600 font-medium">
-                                ✅ After delivery: ${item.calculations.stock_after_order} units (${((item.calculations.stock_after_order - item.reorder_point) / 30).toFixed(1)} months above ROP)
-                            </div>
-                        </div>
-                    </div>
-                `;
-                container.innerHTML += card;
-            });
+                const urgencyEmoji = {
+                    'CRITICAL': '🚨',
+                    'URGENT': '⚠️',
+                    'SOON': '⏰'
+                }[item.urgency] || '📦';
 
-            if (itemsToOrder.length === 0) {
-                container.innerHTML = `
-                    <div class="bg-green-50 p-6 rounded-lg text-center">
-                        <span class="text-4xl mb-3">✅</span>
-                        <p class="text-green-800 font-bold">All SKUs are adequately stocked!</p>
-                        <p class="text-green-600 text-sm mt-2">No orders needed at this time.</p>
-                    </div>
+                // Determine row styling based on urgency
+                const rowClass = {
+                    'CRITICAL': 'bg-red-50 border-l-4 border-red-500',
+                    'URGENT': 'bg-orange-50 border-l-4 border-orange-500',
+                    'SOON': 'bg-yellow-50 border-l-4 border-yellow-500'
+                }[item.urgency] || '';
+
+                const row = `
+                    <tr class="${rowClass}">
+                        <td class="px-4 py-3 font-bold text-gray-900">${item.sku}</td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-${urgencyColor}-100 text-${urgencyColor}-800">
+                                ${urgencyEmoji} ${item.urgency}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono">${item.current_stock}</td>
+                        <td class="px-4 py-3 text-right font-mono">${item.days_until_stockout.toFixed(1)}</td>
+                        <td class="px-4 py-3 text-right font-mono font-bold text-${urgencyColor}-700">${item.order_quantity}</td>
+                    </tr>
                 `;
-            }
+                tbody.innerHTML += row;
+            });
         }
 
         function showAlertBanner() {
@@ -749,20 +759,19 @@
                 return;
             }
             
-            const headers = ['SKU', 'Current Stock', 'Daily Velocity', 'Days Until Stockout', 'Reorder Point', 'Safety Stock', 'Order Quantity', 'Status', 'Urgency'];
+            const headers = ['SKU', 'Urgency', 'Current Stock', 'Days Until Out', 'Order Quantity'];
             const rows = [headers];
             
-            recommendationsData.recommendations.forEach(item => {
+            // Only export items that need orders
+            const itemsToOrder = recommendationsData.recommendations.filter(r => r.order_needed);
+            
+            itemsToOrder.forEach(item => {
                 rows.push([
                     item.sku,
+                    item.urgency,
                     item.current_stock.toFixed(0),
-                    item.scaled_velocity.toFixed(2),
                     item.days_until_stockout.toFixed(1),
-                    item.reorder_point.toFixed(0),
-                    item.safety_stock.toFixed(0),
-                    item.order_quantity.toFixed(0),
-                    item.status.replace('_', ' '),
-                    item.urgency
+                    item.order_quantity.toFixed(0)
                 ]);
             });
             
@@ -771,11 +780,11 @@
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'purchase_recommendations.csv';
+            a.download = 'purchase_order_recommendations.csv';
             a.click();
             window.URL.revokeObjectURL(url);
             
-            alert(`✅ Exported ${rows.length - 1} recommendations to CSV`);
+            alert(`✅ Exported ${rows.length - 1} purchase recommendations to CSV`);
         }
 
     </script>
