@@ -459,8 +459,33 @@
         <div class="card">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-bold text-gray-900">📦 Step 1: Inventory Data Status</h2>
-                <button onclick="exportTableToCSV('sync-status-table', 'inventory_sync_status.csv')" 
-                        class="btn-export">📥 Export CSV</button>
+                <div class="flex gap-2">
+                    <button onclick="exportTableToCSV('sync-status-table', 'inventory_sync_status.csv')" 
+                            class="btn-export">📥 Export CSV</button>
+                    <button onclick="showSyncLogs()" class="btn-secondary">📋 View Logs</button>
+                </div>
+            </div>
+            
+            <!-- Auto Sync Status -->
+            <div class="mb-4 p-4 rounded-lg" id="auto-sync-status" style="background: rgba(140, 158, 255, 0.1); border: 1px solid rgba(140, 158, 255, 0.2);">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div id="sync-indicator" class="w-3 h-3 rounded-full mr-3" style="background: #4CAF50;"></div>
+                        <div>
+                            <h4 style="margin: 0; margin-bottom: 4px;">Auto Sync Service</h4>
+                            <p class="caption" style="margin: 0;" id="sync-status-text">Loading...</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="triggerManualSync()" class="btn-secondary" id="manual-sync-btn">
+                            🔄 Manual Sync
+                        </button>
+                        <button onclick="refreshSyncStatus()" class="btn-export">
+                            ↻ Refresh
+                        </button>
+                    </div>
+                </div>
+                <div id="last-sync-info" class="mt-2 text-sm" style="color: var(--color-text-body);"></div>
             </div>
             
             <div class="overflow-x-auto">
@@ -694,6 +719,41 @@
         </div>
     </div>
 
+    <!-- Sync Logs Modal -->
+    <div id="sync-logs-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div class="flex justify-between items-center p-6 border-b">
+                <h3 style="font-size: 18px; font-weight: 800; color: var(--color-navy); margin: 0;">Sync Operation Logs</h3>
+                <button onclick="closeSyncLogs()" class="text-gray-500 hover:text-gray-700">
+                    <span style="font-size: 24px;">&times;</span>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto max-h-[60vh]">
+                <div class="overflow-x-auto">
+                    <table id="sync-logs-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Started</th>
+                                <th>Completed</th>
+                                <th>Status</th>
+                                <th>Orders</th>
+                                <th>Lines</th>
+                                <th>API Calls</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sync-logs-body">
+                            <tr>
+                                <td colspan="8" class="text-center">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Global variables
         let currentData = {};
@@ -703,6 +763,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadStatus();
             setDefaultDates();
+            loadSyncStatus();
+            
+            // Auto-refresh sync status every 30 seconds
+            setInterval(loadSyncStatus, 30000);
         });
 
         function setDefaultDates() {
@@ -1205,6 +1269,174 @@
             } catch (error) {
                 console.error('Failed to load dashboard data:', error);
             }
+        }
+
+        // Sync Service Functions
+        async function loadSyncStatus() {
+            try {
+                const response = await fetch('/api/sync/status');
+                const status = await response.json();
+                
+                updateSyncUI(status);
+                
+            } catch (error) {
+                console.error('Failed to load sync status:', error);
+                updateSyncUI({
+                    is_running: false,
+                    sync_enabled: false,
+                    error: 'Failed to connect to sync service'
+                });
+            }
+        }
+
+        function updateSyncUI(status) {
+            const indicator = document.getElementById('sync-indicator');
+            const statusText = document.getElementById('sync-status-text');
+            const lastSyncInfo = document.getElementById('last-sync-info');
+            const manualSyncBtn = document.getElementById('manual-sync-btn');
+            
+            // Update indicator color and status text
+            if (status.error) {
+                indicator.style.background = '#FF5252'; // Red
+                statusText.textContent = 'Service Error';
+                lastSyncInfo.textContent = `Error: ${status.error}`;
+                manualSyncBtn.disabled = true;
+            } else if (status.is_running) {
+                indicator.style.background = '#FFCD83'; // Yellow
+                statusText.textContent = 'Sync Running...';
+                manualSyncBtn.disabled = true;
+                manualSyncBtn.textContent = '⏳ Running';
+            } else if (status.sync_enabled) {
+                indicator.style.background = '#4CAF50'; // Green
+                statusText.textContent = 'Auto Sync Active';
+                manualSyncBtn.disabled = false;
+                manualSyncBtn.textContent = '🔄 Manual Sync';
+            } else {
+                indicator.style.background = '#B0B0B5'; // Gray
+                statusText.textContent = 'Sync Disabled';
+                manualSyncBtn.disabled = true;
+            }
+            
+            // Update last sync info
+            if (status.last_sync && status.last_sync_time) {
+                const lastSync = status.last_sync;
+                const syncTime = new Date(status.last_sync_time).toLocaleString();
+                
+                if (lastSync.status === 'completed') {
+                    lastSyncInfo.innerHTML = `
+                        <strong>Last sync:</strong> ${syncTime} 
+                        (${lastSync.orders_processed || 0} orders, ${lastSync.lines_stored || 0} lines)
+                    `;
+                } else if (lastSync.status === 'failed') {
+                    lastSyncInfo.innerHTML = `
+                        <strong>Last sync failed:</strong> ${syncTime} 
+                        <span style="color: var(--color-accent-2);">${lastSync.error_message || 'Unknown error'}</span>
+                    `;
+                } else {
+                    lastSyncInfo.innerHTML = `<strong>Last sync:</strong> ${syncTime}`;
+                }
+            } else {
+                lastSyncInfo.textContent = 'No sync history available';
+            }
+        }
+
+        async function refreshSyncStatus() {
+            const btn = event.target;
+            btn.disabled = true;
+            btn.textContent = '⏳ Loading...';
+            
+            await loadSyncStatus();
+            
+            btn.disabled = false;
+            btn.textContent = '↻ Refresh';
+        }
+
+        async function triggerManualSync() {
+            const btn = document.getElementById('manual-sync-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Starting...';
+            
+            try {
+                const response = await fetch('/api/sync/trigger', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`✅ Manual sync completed!\n\nResults:\n• ${result.stats.orders_found} orders processed\n• ${result.stats.lines_stored} lines stored\n• ${result.stats.skipped_existing} duplicates skipped`);
+                    
+                    // Refresh status and dashboard data
+                    loadSyncStatus();
+                    loadStatus();
+                } else {
+                    alert(`❌ Manual sync failed:\n${result.error}`);
+                }
+                
+            } catch (error) {
+                alert(`❌ Sync request failed:\n${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 Manual Sync';
+            }
+        }
+
+        async function showSyncLogs() {
+            try {
+                const response = await fetch('/api/sync/logs?limit=50');
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateSyncLogsTable(data.logs);
+                    document.getElementById('sync-logs-modal').classList.remove('hidden');
+                } else {
+                    alert('Failed to load sync logs: ' + data.error);
+                }
+                
+            } catch (error) {
+                alert('Error loading sync logs: ' + error.message);
+            }
+        }
+
+        function updateSyncLogsTable(logs) {
+            const tbody = document.getElementById('sync-logs-body');
+            
+            if (logs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center">No sync logs found</td></tr>';
+                return;
+            }
+            
+            const rows = logs.map(log => {
+                const startedAt = log.started_at ? new Date(log.started_at).toLocaleString() : '-';
+                const completedAt = log.completed_at ? new Date(log.completed_at).toLocaleString() : '-';
+                const duration = log.started_at && log.completed_at ? 
+                    Math.round((new Date(log.completed_at) - new Date(log.started_at)) / 1000) + 's' : '-';
+                
+                let statusClass = 'status-ok';
+                if (log.status === 'failed') statusClass = 'status-critical';
+                else if (log.status === 'running') statusClass = 'status-warning';
+                
+                return `
+                    <tr>
+                        <td><span class="status-${log.sync_type}">${log.sync_type.toUpperCase()}</span></td>
+                        <td class="text-xs">${startedAt}</td>
+                        <td class="text-xs">${completedAt}<br><small>${duration}</small></td>
+                        <td><span class="${statusClass}">${log.status.toUpperCase()}</span></td>
+                        <td class="metric-value">${log.orders_processed || 0}</td>
+                        <td class="metric-value">${log.lines_stored || 0}</td>
+                        <td class="metric-value">${log.total_api_calls || 0}</td>
+                        <td class="text-xs" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${log.error_message || ''}">
+                            ${log.error_message ? log.error_message.substring(0, 50) + '...' : '-'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            tbody.innerHTML = rows;
+        }
+
+        function closeSyncLogs() {
+            document.getElementById('sync-logs-modal').classList.add('hidden');
         }
     </script>
 </body>

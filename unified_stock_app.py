@@ -1424,6 +1424,139 @@ def get_selected_skus():
     except Exception:
         return []
 
+# Sync Service API Endpoints
+@app.route('/api/sync/status')
+@require_auth
+def get_sync_status():
+    """Get current sync service status"""
+    try:
+        from sync_service import SyncService
+        service = SyncService()
+        status = service.get_sync_status()
+        return jsonify(status)
+    except Exception as e:
+        return jsonify({'error': f'Failed to get sync status: {str(e)}'}), 500
+
+@app.route('/api/sync/logs')
+@require_auth
+def get_sync_logs():
+    """Get recent sync operation logs"""
+    try:
+        limit = int(request.args.get('limit', 20))
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, sync_type, started_at, completed_at, status,
+                   orders_processed, lines_stored, error_message, 
+                   created_since_date, total_api_calls
+            FROM sync_log 
+            ORDER BY started_at DESC 
+            LIMIT ?
+        """, (limit,))
+        
+        logs = []
+        for row in cursor.fetchall():
+            logs.append({
+                'id': row[0],
+                'sync_type': row[1],
+                'started_at': row[2],
+                'completed_at': row[3],
+                'status': row[4],
+                'orders_processed': row[5],
+                'lines_stored': row[6],
+                'error_message': row[7],
+                'created_since_date': row[8],
+                'total_api_calls': row[9]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'total_returned': len(logs)
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sync/trigger', methods=['POST'])
+@require_auth
+def trigger_manual_sync():
+    """Trigger a manual sync operation"""
+    try:
+        from sync_service import SyncService
+        service = SyncService()
+        
+        # Check if sync is already running
+        if service.is_sync_running():
+            return jsonify({
+                'success': False,
+                'error': 'Sync is already running'
+            }), 409
+        
+        # Trigger hourly sync
+        result = service.hourly_sync()
+        
+        if result['success']:
+            return jsonify({
+                'success': True,
+                'message': 'Manual sync completed successfully',
+                'stats': result.get('stats', {}),
+                'created_since': result.get('created_since')
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'Unknown error')
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to trigger sync: {str(e)}'
+        }), 500
+
+@app.route('/api/sync/health')
+def sync_health_check():
+    """Health check endpoint for sync service monitoring"""
+    try:
+        from sync_service import SyncService
+        service = SyncService()
+        status = service.get_sync_status()
+        
+        # Determine health based on last sync
+        health = 'healthy'
+        if status.get('last_sync'):
+            last_sync = status['last_sync']
+            if last_sync['status'] == 'failed':
+                health = 'unhealthy'
+            elif last_sync['status'] == 'running':
+                # Check if it's been running too long
+                if last_sync.get('started_at'):
+                    from datetime import datetime
+                    started = datetime.fromisoformat(last_sync['started_at'])
+                    now = datetime.now()
+                    if (now - started).total_seconds() > 3600:  # 1 hour
+                        health = 'unhealthy'
+        
+        return jsonify({
+            'status': health,
+            'sync_enabled': status.get('sync_enabled', False),
+            'is_running': status.get('is_running', False),
+            'last_sync_time': status.get('last_sync_time'),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 if __name__ == '__main__':
     # Get port from environment variable (for production) or use default
     port = int(os.environ.get('PORT', 5050))
