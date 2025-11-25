@@ -341,11 +341,13 @@ class UnifiedCin7Client:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
-            # OPTIMIZATION 1: Preload existing orders to skip API calls
+            # OPTIMIZATION 1: Preload existing sale IDs to skip API calls
             logger.info("⚡ Preloading existing orders...")
             cursor.execute('SELECT DISTINCT reference_id FROM orders WHERE reference_id IS NOT NULL')
-            existing_orders = {row[0] for row in cursor.fetchall()}
-            logger.info(f"📋 Found {len(existing_orders)} existing orders to skip")
+            existing_reference_ids = {row[0] for row in cursor.fetchall()}
+            # Also extract just the sale IDs for quick lookup
+            existing_sale_ids = {ref.split(':')[0] for ref in existing_reference_ids if ':' in ref}
+            logger.info(f"📋 Found {len(existing_reference_ids)} existing order lines ({len(existing_sale_ids)} unique orders) to skip")
 
             # Track results
             orders_found = 0
@@ -391,7 +393,7 @@ class UnifiedCin7Client:
                         continue
 
                     # Skip existing orders (avoid API call)
-                    if sale_id in existing_orders:
+                    if sale_id in existing_sale_ids:
                         skipped_existing += 1
                         continue
 
