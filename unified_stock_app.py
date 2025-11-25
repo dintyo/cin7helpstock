@@ -1557,6 +1557,66 @@ def sync_health_check():
             'timestamp': datetime.now().isoformat()
         }), 500
 
+@app.route('/api/cron/daily-sync', methods=['POST', 'GET'])
+def cron_daily_sync():
+    """
+    Endpoint for automated daily sync (call from external cron service)
+    Syncs recent orders and stock levels to keep database current
+    
+    Optional authentication via X-Cron-Token header or cron_token query param
+    """
+    # Optional: Check authentication token
+    auth_token = request.headers.get('X-Cron-Token') or request.args.get('cron_token')
+    expected_token = os.environ.get('CRON_TOKEN', '')
+    
+    # If a token is configured, validate it
+    if expected_token and auth_token != expected_token:
+        logger.warning("Unauthorized cron sync attempt")
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    logger.info("🔄 Starting automated daily sync via cron endpoint")
+    
+    try:
+        # Import daily sync functions
+        import sys
+        import importlib.util
+        
+        # Load daily_sync module
+        spec = importlib.util.spec_from_file_location("daily_sync", "daily_sync.py")
+        if spec and spec.loader:
+            daily_sync = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(daily_sync)
+            
+            # Run the sync functions
+            orders_result = daily_sync.sync_recent_orders(days_back=7)
+            stock_result = daily_sync.sync_stock_levels()
+            
+            success = orders_result.get('success', False) and stock_result.get('success', False)
+            
+            response = {
+                'success': success,
+                'orders': orders_result,
+                'stock': stock_result,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            if success:
+                logger.info("✅ Automated daily sync completed successfully")
+            else:
+                logger.warning("⚠️ Automated daily sync completed with errors")
+            
+            return jsonify(response)
+        else:
+            raise ImportError("Could not load daily_sync module")
+            
+    except Exception as e:
+        logger.error(f"❌ Automated daily sync failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 if __name__ == '__main__':
     # Get port from environment variable (for production) or use default
     port = int(os.environ.get('PORT', 5050))
