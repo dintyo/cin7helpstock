@@ -1561,7 +1561,7 @@ def sync_health_check():
 def cron_daily_sync():
     """
     Endpoint for automated daily sync (call from external cron service)
-    Syncs recent orders and stock levels to keep database current
+    Starts sync in background and returns immediately to avoid timeouts
     
     Optional authentication via X-Cron-Token header or cron_token query param
     """
@@ -1574,43 +1574,53 @@ def cron_daily_sync():
         logger.warning("Unauthorized cron sync attempt")
         return jsonify({'error': 'Unauthorized'}), 401
     
-    logger.info("🔄 Starting automated daily sync via cron endpoint")
+    logger.info("🔄 Daily sync triggered via cron endpoint - starting background process")
     
     try:
-        # Import daily sync functions
-        import sys
-        import importlib.util
+        import threading
         
-        # Load daily_sync module
-        spec = importlib.util.spec_from_file_location("daily_sync", "daily_sync.py")
-        if spec and spec.loader:
-            daily_sync = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(daily_sync)
-            
-            # Run the sync functions
-            orders_result = daily_sync.sync_recent_orders(days_back=7)
-            stock_result = daily_sync.sync_stock_levels()
-            
-            success = orders_result.get('success', False) and stock_result.get('success', False)
-            
-            response = {
-                'success': success,
-                'orders': orders_result,
-                'stock': stock_result,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            if success:
-                logger.info("✅ Automated daily sync completed successfully")
-            else:
-                logger.warning("⚠️ Automated daily sync completed with errors")
-            
-            return jsonify(response)
-        else:
-            raise ImportError("Could not load daily_sync module")
-            
+        def run_sync_background():
+            """Run sync in background thread"""
+            try:
+                logger.info("🔄 Background sync starting...")
+                
+                # Import and run daily sync
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("daily_sync", "daily_sync.py")
+                if spec and spec.loader:
+                    daily_sync = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(daily_sync)
+                    
+                    # Run the sync functions
+                    stock_result = daily_sync.sync_stock_levels()
+                    orders_result = daily_sync.sync_recent_orders(days_back=7)
+                    
+                    if stock_result.get('success') and orders_result.get('success'):
+                        logger.info("✅ Background sync completed successfully")
+                    else:
+                        logger.warning("⚠️ Background sync completed with errors")
+                else:
+                    logger.error("❌ Could not load daily_sync module")
+                    
+            except Exception as e:
+                logger.error(f"❌ Background sync failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        
+        # Start sync in background thread
+        sync_thread = threading.Thread(target=run_sync_background, daemon=True)
+        sync_thread.start()
+        
+        # Return immediately
+        return jsonify({
+            'success': True,
+            'message': 'Daily sync started in background',
+            'timestamp': datetime.now().isoformat(),
+            'note': 'Sync will complete in 5-15 minutes. Check logs for results.'
+        }), 202  # 202 Accepted
+        
     except Exception as e:
-        logger.error(f"❌ Automated daily sync failed: {e}")
+        logger.error(f"❌ Failed to start daily sync: {e}")
         return jsonify({
             'success': False,
             'error': str(e),
