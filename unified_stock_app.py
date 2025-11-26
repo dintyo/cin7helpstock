@@ -782,7 +782,6 @@ def get_sku_analysis():
             GROUP BY sku
             HAVING total_quantity > 0
             ORDER BY total_quantity DESC
-            LIMIT 20
         ''')
         
         skus = []
@@ -850,7 +849,7 @@ def get_period_analysis():
                     MAX(booking_date) as last_sale
                 FROM orders 
                 WHERE booking_date BETWEEN ? AND ?
-                    AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%')
+                    AND sku LIKE 'OB%'
                 GROUP BY sku
                 HAVING total_quantity > 0
                 ORDER BY total_quantity DESC
@@ -958,7 +957,7 @@ def get_current_stock():
                     MIN(booking_date) as first_sale,
                     MAX(booking_date) as last_sale
                 FROM orders 
-                WHERE sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%'
+                WHERE sku LIKE 'OB%'
                 GROUP BY sku
                 ORDER BY sku
             ''')
@@ -1657,7 +1656,7 @@ def get_period_analysis_by_warehouse():
                     FROM orders 
                     WHERE booking_date BETWEEN ? AND ?
                         AND warehouse = ?
-                        AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%')
+                        AND sku LIKE 'OB%'
                     GROUP BY sku
                     HAVING total_quantity > 0
                     ORDER BY total_quantity DESC
