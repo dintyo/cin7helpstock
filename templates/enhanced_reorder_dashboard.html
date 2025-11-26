@@ -184,6 +184,9 @@
                 <div class="flex items-center space-x-4">
                     <a href="/reorder" class="bg-blue-600 text-white px-3 py-2 rounded-md text-sm font-medium">📊 Stock Analysis</a>
                     <a href="/sku-management" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">SKU Management</a>
+                    <button onclick="syncCIN7()" id="sync-btn" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                        <span id="sync-btn-text">🔄 Sync CIN7</span>
+                    </button>
                     <a href="/logout" class="text-red-600 hover:text-red-800 px-3 py-2 rounded-md text-sm font-medium">🔓 Logout</a>
                 </div>
             </div>
@@ -191,6 +194,22 @@
     </nav>
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Sync Toast Notification -->
+        <div id="sync-toast" class="hidden fixed top-20 right-4 z-50 bg-white shadow-lg rounded-lg p-4 border-l-4 max-w-md">
+            <div class="flex items-start">
+                <span id="sync-toast-icon" class="text-2xl mr-3"></span>
+                <div class="flex-1">
+                    <p id="sync-toast-title" class="font-bold text-sm"></p>
+                    <p id="sync-toast-message" class="text-xs text-gray-600 mt-1"></p>
+                </div>
+                <button onclick="closeToast()" class="text-gray-400 hover:text-gray-600 ml-4">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
         <!-- Alert Banner -->
         <div id="alert-banner" class="hidden mb-6 p-4 rounded-lg">
             <div class="flex items-center">
@@ -1184,6 +1203,93 @@
                 document.getElementById('toggle-warehouse-btn').style.display = 'inline-block';
             }
         };
+
+        // ========================================================================
+        // SYNC CIN7 FUNCTIONS
+        // ========================================================================
+        
+        function showToast(title, message, type = 'success') {
+            const toast = document.getElementById('sync-toast');
+            const icon = document.getElementById('sync-toast-icon');
+            const toastTitle = document.getElementById('sync-toast-title');
+            const toastMessage = document.getElementById('sync-toast-message');
+            
+            // Set colors and icon based on type
+            if (type === 'success') {
+                toast.className = 'fixed top-20 right-4 z-50 bg-white shadow-lg rounded-lg p-4 border-l-4 border-green-500 max-w-md';
+                icon.textContent = '✅';
+                toastTitle.className = 'font-bold text-sm text-green-800';
+            } else if (type === 'error') {
+                toast.className = 'fixed top-20 right-4 z-50 bg-white shadow-lg rounded-lg p-4 border-l-4 border-red-500 max-w-md';
+                icon.textContent = '❌';
+                toastTitle.className = 'font-bold text-sm text-red-800';
+            } else if (type === 'info') {
+                toast.className = 'fixed top-20 right-4 z-50 bg-white shadow-lg rounded-lg p-4 border-l-4 border-blue-500 max-w-md';
+                icon.textContent = '🔄';
+                toastTitle.className = 'font-bold text-sm text-blue-800';
+            }
+            
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            toast.classList.remove('hidden');
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                closeToast();
+            }, 5000);
+        }
+        
+        function closeToast() {
+            document.getElementById('sync-toast').classList.add('hidden');
+        }
+        
+        async function syncCIN7() {
+            const btn = document.getElementById('sync-btn');
+            const btnText = document.getElementById('sync-btn-text');
+            const originalText = btnText.textContent;
+            
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btnText.textContent = '🔄 Syncing...';
+            
+            showToast('Syncing...', 'Fetching stock levels and orders from CIN7. This may take a minute.', 'info');
+            
+            try {
+                const response = await fetch('/api/sync/quick');
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Success!
+                    showToast(
+                        'Sync Complete!',
+                        data.message || 'Successfully synced stock and orders from CIN7.',
+                        'success'
+                    );
+                    console.log('Sync results:', data);
+                } else {
+                    // Error
+                    showToast(
+                        'Sync Failed',
+                        data.error || 'Failed to sync with CIN7. Please try again.',
+                        'error'
+                    );
+                    console.error('Sync error:', data);
+                }
+            } catch (error) {
+                console.error('Sync request failed:', error);
+                showToast(
+                    'Sync Failed',
+                    'Network error. Please check your connection and try again.',
+                    'error'
+                );
+            } finally {
+                // Re-enable button
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                btnText.textContent = originalText;
+            }
+        }
 
     </script>
 </body>

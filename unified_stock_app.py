@@ -849,7 +849,7 @@ def get_period_analysis():
                     MAX(booking_date) as last_sale
                 FROM orders 
                 WHERE booking_date BETWEEN ? AND ?
-                    AND sku LIKE 'OB%'
+                    AND (sku LIKE 'OBMT%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-MAX-%' OR sku = 'OBP')
                 GROUP BY sku
                 HAVING total_quantity > 0
                 ORDER BY total_quantity DESC
@@ -957,7 +957,7 @@ def get_current_stock():
                     MIN(booking_date) as first_sale,
                     MAX(booking_date) as last_sale
                 FROM orders 
-                WHERE sku LIKE 'OB%'
+                WHERE sku LIKE 'OBMT%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-MAX-%' OR sku = 'OBP'
                 GROUP BY sku
                 ORDER BY sku
             ''')
@@ -1656,7 +1656,7 @@ def get_period_analysis_by_warehouse():
                     FROM orders 
                     WHERE booking_date BETWEEN ? AND ?
                         AND warehouse = ?
-                        AND sku LIKE 'OB%'
+                        AND (sku LIKE 'OBMT%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-MAX-%' OR sku = 'OBP')
                     GROUP BY sku
                     HAVING total_quantity > 0
                     ORDER BY total_quantity DESC
@@ -1902,6 +1902,72 @@ def get_recommendations_by_warehouse():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sync/quick')
+def quick_sync():
+    """Quick sync: stock levels + orders from last 3 days"""
+    try:
+        logger.info("🔄 Starting quick sync (stock + 3 days orders)")
+        
+        # 1. Sync stock levels from CIN7
+        logger.info("📦 Syncing stock levels...")
+        stock_result = cin7_client.sync_stock_from_cin7()
+        
+        # 2. Sync orders from last 3 days
+        logger.info("📋 Syncing orders from last 3 days...")
+        from datetime import datetime, timedelta
+        import pytz
+        
+        # Calculate 3 days ago in GMT+10
+        tz = pytz.timezone('Australia/Sydney')
+        now_local = datetime.now(tz)
+        three_days_ago = now_local - timedelta(days=3)
+        created_since = three_days_ago.strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        orders_result = cin7_client.sync_recent_orders(created_since, max_orders=500)
+        
+        # 3. Build response
+        if stock_result.get('success') and orders_result.get('success'):
+            message = f"✅ Synced {stock_result.get('sku_count', 0)} SKUs and {orders_result.get('lines_stored', 0)} order lines from last 3 days"
+            
+            logger.info(message)
+            
+            return jsonify({
+                'success': True,
+                'stock': {
+                    'skus_synced': stock_result.get('sku_count', 0),
+                    'method': stock_result.get('method', 'unknown')
+                },
+                'orders': {
+                    'orders_found': orders_result.get('orders_found', 0),
+                    'lines_stored': orders_result.get('lines_stored', 0),
+                    'skipped_existing': orders_result.get('skipped_existing', 0)
+                },
+                'message': message,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            # Partial failure
+            errors = []
+            if not stock_result.get('success'):
+                errors.append(f"Stock sync: {stock_result.get('error', 'unknown error')}")
+            if not orders_result.get('success'):
+                errors.append(f"Orders sync: {orders_result.get('error', 'unknown error')}")
+            
+            return jsonify({
+                'success': False,
+                'error': '; '.join(errors),
+                'stock': stock_result,
+                'orders': orders_result
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"❌ Quick sync failed: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 if __name__ == '__main__':
     # Get port from environment variable (for production) or use default
