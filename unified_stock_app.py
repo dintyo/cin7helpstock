@@ -850,7 +850,7 @@ def get_period_analysis():
                     MAX(booking_date) as last_sale
                 FROM orders 
                 WHERE booking_date BETWEEN ? AND ?
-                    AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%')
+                    AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%')
                 GROUP BY sku
                 HAVING total_quantity > 0
                 ORDER BY total_quantity DESC
@@ -958,7 +958,7 @@ def get_current_stock():
                     MIN(booking_date) as first_sale,
                     MAX(booking_date) as last_sale
                 FROM orders 
-                WHERE sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%'
+                WHERE sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%'
                 GROUP BY sku
                 ORDER BY sku
             ''')
@@ -1616,6 +1616,293 @@ def cron_daily_sync():
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
+
+# ============================================================================
+# WAREHOUSE-SPECIFIC ENDPOINTS
+# ============================================================================
+
+@app.route('/api/analysis/period-by-warehouse')
+def get_period_analysis_by_warehouse():
+    """Get SKU analysis split by warehouse with reorder calculations"""
+    try:
+        from_date = request.args.get('from', '2025-08-01')
+        to_date = request.args.get('to', '2025-09-24')
+        
+        # Business parameters
+        lead_time_days = int(request.args.get('lead_time', 30))
+        buffer_months = float(request.args.get('buffer_months', 1))
+        scale_factor = float(request.args.get('scale_factor', 1.0))
+        
+        buffer_days = buffer_months * 30
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Get selected SKUs for analysis
+        selected_skus = get_selected_skus()
+        
+        warehouses = ['VIC', 'QLD', 'NSW']
+        results_by_warehouse = {}
+        
+        for warehouse in warehouses:
+            if not selected_skus:
+                # Fallback to OB families if no selection - NOW INCLUDING OB-MAX AND OBMTK
+                cursor.execute('''
+                    SELECT 
+                        sku,
+                        SUM(quantity) as total_quantity,
+                        COUNT(*) as order_count,
+                        MIN(booking_date) as first_sale,
+                        MAX(booking_date) as last_sale
+                    FROM orders 
+                    WHERE booking_date BETWEEN ? AND ?
+                        AND warehouse = ?
+                        AND (sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-MAX-%' OR sku LIKE 'OBMTK%')
+                    GROUP BY sku
+                    HAVING total_quantity > 0
+                    ORDER BY total_quantity DESC
+                ''', (from_date, to_date, warehouse))
+            else:
+                # Use selected SKUs
+                placeholders = ','.join(['?' for _ in selected_skus])
+                query = f'''
+                    SELECT 
+                        sku,
+                        SUM(quantity) as total_quantity,
+                        COUNT(*) as order_count,
+                        MIN(booking_date) as first_sale,
+                        MAX(booking_date) as last_sale
+                    FROM orders 
+                    WHERE booking_date BETWEEN ? AND ?
+                        AND warehouse = ?
+                        AND sku IN ({placeholders})
+                    GROUP BY sku
+                    HAVING total_quantity > 0
+                    ORDER BY total_quantity DESC
+                '''
+                cursor.execute(query, (from_date, to_date, warehouse) + tuple(selected_skus))
+            
+            # Calculate period days
+            period_start = datetime.strptime(from_date, '%Y-%m-%d')
+            period_end = datetime.strptime(to_date, '%Y-%m-%d')
+            period_days = (period_end - period_start).days + 1
+            
+            skus = []
+            for row in cursor.fetchall():
+                # Calculate velocity
+                daily_velocity = row['total_quantity'] / period_days
+                scaled_velocity = daily_velocity * scale_factor
+                
+                # Calculate reorder point components
+                lead_time_demand = scaled_velocity * lead_time_days
+                safety_stock = scaled_velocity * buffer_days
+                reorder_point = lead_time_demand + safety_stock
+                
+                skus.append({
+                    'sku': row['sku'],
+                    'total_quantity': row['total_quantity'],
+                    'order_count': row['order_count'],
+                    'first_sale': row['first_sale'],
+                    'last_sale': row['last_sale'],
+                    'daily_velocity': round(daily_velocity, 3),
+                    'scaled_velocity': round(scaled_velocity, 3),
+                    'weekly_velocity': round(scaled_velocity * 7, 2),
+                    'monthly_velocity': round(scaled_velocity * 30, 1),
+                    'lead_time_demand': round(lead_time_demand, 0),
+                    'safety_stock': round(safety_stock, 0),
+                    'reorder_point': round(reorder_point, 0),
+                    'lead_time_days': lead_time_days,
+                    'buffer_days': round(buffer_days, 0),
+                    'scale_factor': scale_factor
+                })
+            
+            results_by_warehouse[warehouse] = skus
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'by_warehouse': results_by_warehouse,
+            'period': {
+                'from': from_date,
+                'to': to_date
+            },
+            'parameters': {
+                'lead_time_days': lead_time_days,
+                'buffer_months': buffer_months,
+                'scale_factor': scale_factor
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stock/current-by-warehouse')
+def get_current_stock_by_warehouse():
+    """Get current stock levels split by warehouse"""
+    try:
+        # Call the existing stock sync to get warehouse-specific data
+        stock_result = cin7_client.sync_stock_from_cin7()
+        
+        if not stock_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': 'Failed to fetch stock from Cin7'
+            }), 500
+        
+        stock_by_warehouse = stock_result.get('stock_by_warehouse', {})
+        
+        # Get selected SKUs for filtering
+        selected_skus = get_selected_skus()
+        
+        if selected_skus:
+            # Filter to only selected SKUs
+            filtered_stock = {}
+            for sku in selected_skus:
+                if sku in stock_by_warehouse:
+                    filtered_stock[sku] = stock_by_warehouse[sku]
+        else:
+            filtered_stock = stock_by_warehouse
+        
+        return jsonify({
+            'success': True,
+            'stock_by_warehouse': filtered_stock,
+            'source': 'cin7_live',
+            'total_skus': len(filtered_stock),
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recommendations-by-warehouse')
+def get_recommendations_by_warehouse():
+    """Get order recommendations split by warehouse"""
+    try:
+        # Get parameters
+        from_date = request.args.get('from', '2025-09-16')
+        to_date = request.args.get('to', '2025-09-24')
+        lead_time_days = int(request.args.get('lead_time', 30))
+        buffer_months = float(request.args.get('buffer_months', 1))
+        scale_factor = float(request.args.get('scale_factor', 1.0))
+        
+        buffer_days = buffer_months * 30
+        
+        # Get warehouse-specific velocity data
+        velocity_response = get_period_analysis_by_warehouse()
+        velocity_data = velocity_response.get_json()
+        
+        if not velocity_data.get('success'):
+            return jsonify({'error': 'Failed to get velocity data'}), 500
+        
+        # Get warehouse-specific stock levels
+        stock_response = get_current_stock_by_warehouse()
+        stock_data = stock_response.get_json()
+        
+        if not stock_data.get('success'):
+            return jsonify({'error': 'Failed to get stock data'}), 500
+        
+        stock_by_warehouse = stock_data.get('stock_by_warehouse', {})
+        
+        # Process recommendations by warehouse
+        recommendations_by_warehouse = {}
+        summary_by_warehouse = {}
+        
+        for warehouse in ['VIC', 'QLD', 'NSW']:
+            recommendations = []
+            warehouse_skus = velocity_data['by_warehouse'].get(warehouse, [])
+            
+            for sku_data in warehouse_skus:
+                sku = sku_data['sku']
+                
+                # Get warehouse-specific stock level
+                current_stock = 0
+                if sku in stock_by_warehouse:
+                    current_stock = stock_by_warehouse[sku].get(warehouse, 0)
+                
+                reorder_point = sku_data['reorder_point']
+                lead_time_demand = sku_data['lead_time_demand']
+                safety_stock = sku_data['safety_stock']
+                scaled_velocity = sku_data['scaled_velocity']
+                
+                # Calculate status and recommendations
+                days_until_stockout = current_stock / scaled_velocity if scaled_velocity > 0 else float('inf')
+                
+                # Determine status
+                if current_stock <= 0:
+                    status = 'STOCKOUT'
+                    urgency = 'CRITICAL'
+                elif current_stock < safety_stock:
+                    status = 'BELOW_SAFETY'
+                    urgency = 'CRITICAL'
+                elif current_stock < reorder_point:
+                    status = 'BELOW_ROP'
+                    urgency = 'URGENT'
+                elif current_stock < reorder_point + (scaled_velocity * 7):
+                    status = 'WARNING'
+                    urgency = 'SOON'
+                else:
+                    status = 'OK'
+                    urgency = 'NONE'
+                
+                # Calculate order quantity if needed
+                order_quantity = 0
+                if current_stock < reorder_point:
+                    monthly_velocity = scaled_velocity * 30
+                    order_quantity = (reorder_point - current_stock) + (monthly_velocity * buffer_months)
+                
+                recommendations.append({
+                    'sku': sku,
+                    'warehouse': warehouse,
+                    'current_stock': current_stock,
+                    'reorder_point': reorder_point,
+                    'lead_time_demand': lead_time_demand,
+                    'safety_stock': safety_stock,
+                    'scaled_velocity': scaled_velocity,
+                    'days_until_stockout': round(days_until_stockout, 1),
+                    'status': status,
+                    'urgency': urgency,
+                    'order_quantity': round(order_quantity, 0),
+                    'order_needed': order_quantity > 0,
+                    'calculations': {
+                        'current_vs_rop': current_stock - reorder_point,
+                        'current_vs_safety': current_stock - safety_stock,
+                        'expected_stock_at_delivery': current_stock - lead_time_demand,
+                        'stock_after_order': current_stock + order_quantity,
+                        'deficit_to_rop': max(0, reorder_point - current_stock),
+                        'buffer_stock_ordered': (scaled_velocity * 30 * buffer_months) if order_quantity > 0 else 0
+                    }
+                })
+            
+            # Sort by urgency
+            urgency_order = {'CRITICAL': 0, 'URGENT': 1, 'SOON': 2, 'NONE': 3}
+            recommendations.sort(key=lambda x: (urgency_order[x['urgency']], -x.get('order_quantity', 0)))
+            
+            recommendations_by_warehouse[warehouse] = recommendations
+            
+            # Calculate summary for this warehouse
+            summary_by_warehouse[warehouse] = {
+                'total_skus': len(recommendations),
+                'critical': sum(1 for r in recommendations if r['urgency'] == 'CRITICAL'),
+                'urgent': sum(1 for r in recommendations if r['urgency'] == 'URGENT'),
+                'orders_needed': sum(1 for r in recommendations if r['order_needed']),
+                'total_order_value': sum(r['order_quantity'] for r in recommendations)
+            }
+        
+        return jsonify({
+            'success': True,
+            'by_warehouse': recommendations_by_warehouse,
+            'summary_by_warehouse': summary_by_warehouse,
+            'parameters': {
+                'lead_time_days': lead_time_days,
+                'buffer_months': buffer_months,
+                'scale_factor': scale_factor,
+                'period': {'from': from_date, 'to': to_date}
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     # Get port from environment variable (for production) or use default
