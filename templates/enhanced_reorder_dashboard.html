@@ -213,7 +213,7 @@
                         🚛 Lead Time (days)
                         <span class="text-gray-500 text-xs block">Time from order to delivery</span>
                     </label>
-                    <input type="number" id="lead-time" value="30" min="1" max="365"
+                    <input type="number" id="lead-time" value="70" min="1" max="365"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                 </div>
                 
@@ -222,7 +222,7 @@
                         🛡️ Buffer Stock (months)
                         <span class="text-gray-500 text-xs block">Safety stock to prevent stockouts</span>
                     </label>
-                    <input type="number" id="buffer-months" value="1" min="0.5" max="12" step="0.5"
+                    <input type="number" id="buffer-months" value="2" min="0.5" max="12" step="0.5"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                 </div>
                 
@@ -231,15 +231,15 @@
                         📊 Scale Velocity
                         <span class="text-gray-500 text-xs block">1.0 = no change, 1.2 = 20% growth</span>
                     </label>
-                    <input type="number" id="scale-factor" value="1.0" min="0.5" max="3" step="0.1"
+                    <input type="number" id="scale-factor" value="1.1" min="0.5" max="3" step="0.1"
                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
             
             <div class="mt-4 p-3 bg-blue-50 rounded-lg">
                 <p class="text-sm text-blue-700">
-                    💡 <strong>Example:</strong> With 30-day lead time and 1-month buffer, you'll maintain enough stock to cover 
-                    30 days of sales while waiting for orders, plus an additional 30 days as safety stock.
+                    💡 <strong>Example:</strong> With 70-day lead time and 2-month buffer, you'll maintain enough stock to cover 
+                    70 days of sales while waiting for orders, plus an additional 60 days as safety stock.
                 </p>
             </div>
         </div>
