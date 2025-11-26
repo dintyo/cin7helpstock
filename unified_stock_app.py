@@ -341,13 +341,11 @@ class UnifiedCin7Client:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
 
-            # OPTIMIZATION 1: Preload existing sale IDs to skip API calls
+            # OPTIMIZATION 1: Preload existing orders to skip API calls
             logger.info("⚡ Preloading existing orders...")
             cursor.execute('SELECT DISTINCT reference_id FROM orders WHERE reference_id IS NOT NULL')
-            existing_reference_ids = {row[0] for row in cursor.fetchall()}
-            # Also extract just the sale IDs for quick lookup
-            existing_sale_ids = {ref.split(':')[0] for ref in existing_reference_ids if ':' in ref}
-            logger.info(f"📋 Found {len(existing_reference_ids)} existing order lines ({len(existing_sale_ids)} unique orders) to skip")
+            existing_orders = {row[0] for row in cursor.fetchall()}
+            logger.info(f"📋 Found {len(existing_orders)} existing orders to skip")
 
             # Track results
             orders_found = 0
@@ -393,7 +391,7 @@ class UnifiedCin7Client:
                         continue
 
                     # Skip existing orders (avoid API call)
-                    if sale_id in existing_sale_ids:
+                    if sale_id in existing_orders:
                         skipped_existing += 1
                         continue
 
@@ -1563,7 +1561,7 @@ def sync_health_check():
 def cron_daily_sync():
     """
     Endpoint for automated daily sync (call from external cron service)
-    Starts sync in background and returns immediately to avoid timeouts
+    Syncs recent orders and stock levels to keep database current
     
     Optional authentication via X-Cron-Token header or cron_token query param
     """
@@ -1576,53 +1574,43 @@ def cron_daily_sync():
         logger.warning("Unauthorized cron sync attempt")
         return jsonify({'error': 'Unauthorized'}), 401
     
-    logger.info("🔄 Daily sync triggered via cron endpoint - starting background process")
+    logger.info("🔄 Starting automated daily sync via cron endpoint")
     
     try:
-        import threading
+        # Import daily sync functions
+        import sys
+        import importlib.util
         
-        def run_sync_background():
-            """Run sync in background thread"""
-            try:
-                logger.info("🔄 Background sync starting...")
-                
-                # Import and run daily sync
-                import importlib.util
-                spec = importlib.util.spec_from_file_location("daily_sync", "daily_sync.py")
-                if spec and spec.loader:
-                    daily_sync = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(daily_sync)
-                    
-                    # Run the sync functions
-                    stock_result = daily_sync.sync_stock_levels()
-                    orders_result = daily_sync.sync_recent_orders(days_back=7)
-                    
-                    if stock_result.get('success') and orders_result.get('success'):
-                        logger.info("✅ Background sync completed successfully")
-                    else:
-                        logger.warning("⚠️ Background sync completed with errors")
-                else:
-                    logger.error("❌ Could not load daily_sync module")
-                    
-            except Exception as e:
-                logger.error(f"❌ Background sync failed: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        
-        # Start sync in background thread
-        sync_thread = threading.Thread(target=run_sync_background, daemon=True)
-        sync_thread.start()
-        
-        # Return immediately
-        return jsonify({
-            'success': True,
-            'message': 'Daily sync started in background',
-            'timestamp': datetime.now().isoformat(),
-            'note': 'Sync will complete in 5-15 minutes. Check logs for results.'
-        }), 202  # 202 Accepted
-        
+        # Load daily_sync module
+        spec = importlib.util.spec_from_file_location("daily_sync", "daily_sync.py")
+        if spec and spec.loader:
+            daily_sync = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(daily_sync)
+            
+            # Run the sync functions
+            orders_result = daily_sync.sync_recent_orders(days_back=7)
+            stock_result = daily_sync.sync_stock_levels()
+            
+            success = orders_result.get('success', False) and stock_result.get('success', False)
+            
+            response = {
+                'success': success,
+                'orders': orders_result,
+                'stock': stock_result,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            if success:
+                logger.info("✅ Automated daily sync completed successfully")
+            else:
+                logger.warning("⚠️ Automated daily sync completed with errors")
+            
+            return jsonify(response)
+        else:
+            raise ImportError("Could not load daily_sync module")
+            
     except Exception as e:
-        logger.error(f"❌ Failed to start daily sync: {e}")
+        logger.error(f"❌ Automated daily sync failed: {e}")
         return jsonify({
             'success': False,
             'error': str(e),

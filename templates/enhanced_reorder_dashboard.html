@@ -445,12 +445,103 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Warehouse-Specific View (NEW) -->
+        <div id="warehouse-section" class="bg-white rounded-lg shadow-sm p-6 mb-6" style="display: none;">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900">🏭 Warehouse-Specific Analysis</h2>
+                    <p class="text-gray-600">View stock and reorder recommendations by warehouse location</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="toggleWarehouseView()" 
+                            class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                        ← Back to Aggregated View
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Warehouse Tabs -->
+            <div class="flex border-b border-gray-200 mb-6">
+                <button onclick="showWarehouse('VIC')" id="tab-VIC" 
+                        class="warehouse-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gray-300 transition-colors">
+                    🏢 VIC (Victoria)
+                </button>
+                <button onclick="showWarehouse('QLD')" id="tab-QLD"
+                        class="warehouse-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gray-300 transition-colors">
+                    🏢 QLD (Queensland)
+                </button>
+                <button onclick="showWarehouse('NSW')" id="tab-NSW"
+                        class="warehouse-tab px-6 py-3 text-sm font-medium border-b-2 border-transparent hover:border-gray-300 transition-colors">
+                    🏢 NSW (Wetherill Park)
+                </button>
+            </div>
+            
+            <!-- Warehouse Content -->
+            <div id="warehouse-content">
+                <!-- Summary Cards for Selected Warehouse -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <p class="text-red-600 text-sm font-medium">Critical</p>
+                        <p class="text-2xl font-bold text-red-700" id="wh-critical-count">0</p>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-lg">
+                        <p class="text-orange-600 text-sm font-medium">Urgent</p>
+                        <p class="text-2xl font-bold text-orange-700" id="wh-urgent-count">0</p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <p class="text-blue-600 text-sm font-medium">Orders Needed</p>
+                        <p class="text-2xl font-bold text-blue-700" id="wh-orders-needed">0</p>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <p class="text-green-600 text-sm font-medium">Total Units</p>
+                        <p class="text-2xl font-bold text-green-700" id="wh-total-units">0</p>
+                    </div>
+                </div>
+                
+                <!-- Warehouse Recommendations Table -->
+                <div class="overflow-x-auto">
+                    <table id="warehouse-table" class="min-w-full bg-white border border-gray-200 rounded-lg">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-sm font-medium text-gray-700">SKU</th>
+                                <th class="px-4 py-3 text-center text-sm font-medium text-gray-700">Urgency</th>
+                                <th class="px-4 py-3 text-right text-sm font-medium text-gray-700">Current Stock</th>
+                                <th class="px-4 py-3 text-right text-sm font-medium text-gray-700">Daily Velocity</th>
+                                <th class="px-4 py-3 text-right text-sm font-medium text-gray-700">Reorder Point</th>
+                                <th class="px-4 py-3 text-right text-sm font-medium text-gray-700">Order Quantity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="warehouse-table-body" class="divide-y divide-gray-200">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                    
+                    <!-- Empty state -->
+                    <div id="wh-no-recommendations" class="hidden bg-green-50 p-6 rounded-lg text-center mt-4">
+                        <span class="text-4xl mb-3">✅</span>
+                        <p class="text-green-800 font-bold">All SKUs adequately stocked at this warehouse!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Add Warehouse View Toggle Button -->
+        <div class="text-center mb-6">
+            <button onclick="toggleWarehouseView()" id="toggle-warehouse-btn"
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-md text-sm font-medium transition-colors shadow-sm"
+                    style="display: none;">
+                🏭 View by Warehouse →
+            </button>
+        </div>
     </div>
 
     <script>
         // Global variables to store analysis data
         let analysisData = null;
         let recommendationsData = null;
+        let warehouseData = null;
+        let currentWarehouse = 'VIC';
 
         async function calculateAnalysis() {
             // Get parameters
@@ -936,6 +1027,163 @@
             
             alert(`✅ Exported ${rows.length - 1} purchase recommendations to CSV`);
         }
+
+        // ========================================================================
+        // WAREHOUSE-SPECIFIC FUNCTIONS (NEW)
+        // ========================================================================
+        
+        async function loadWarehouseData() {
+            // Get parameters (same as main analysis)
+            const leadTime = document.getElementById('lead-time').value;
+            const bufferMonths = document.getElementById('buffer-months').value;
+            const scaleFactor = document.getElementById('scale-factor').value;
+            const fromDate = document.getElementById('from-date').value;
+            const toDate = document.getElementById('to-date').value;
+
+            const params = new URLSearchParams({
+                from: fromDate,
+                to: toDate,
+                lead_time: leadTime,
+                buffer_months: bufferMonths,
+                scale_factor: scaleFactor
+            });
+
+            try {
+                // Fetch warehouse-specific recommendations
+                const response = await fetch(`/api/recommendations-by-warehouse?${params}`);
+                warehouseData = await response.json();
+
+                if (warehouseData.success) {
+                    return true;
+                } else {
+                    console.error('Failed to load warehouse data:', warehouseData.error);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error loading warehouse data:', error);
+                alert('⚠️ Failed to load warehouse-specific data. Please try again.');
+                return false;
+            }
+        }
+
+        async function toggleWarehouseView() {
+            const aggregatedSections = ['velocity-section', 'reorder-section', 'stock-section', 'recommendations-section'];
+            const warehouseSection = document.getElementById('warehouse-section');
+            const toggleBtn = document.getElementById('toggle-warehouse-btn');
+            
+            if (warehouseSection.style.display === 'none') {
+                // Switch to warehouse view
+                
+                // Load warehouse data if not already loaded
+                if (!warehouseData) {
+                    console.log('Loading warehouse-specific data...');
+                    const loaded = await loadWarehouseData();
+                    if (!loaded) {
+                        return;
+                    }
+                }
+                
+                // Hide aggregated sections
+                aggregatedSections.forEach(id => {
+                    document.getElementById(id).style.display = 'none';
+                });
+                
+                // Show warehouse section and update button
+                warehouseSection.style.display = 'block';
+                showWarehouse(currentWarehouse);
+                
+            } else {
+                // Switch back to aggregated view
+                warehouseSection.style.display = 'none';
+                
+                // Show aggregated sections
+                aggregatedSections.forEach(id => {
+                    document.getElementById(id).style.display = 'block';
+                });
+            }
+        }
+
+        function showWarehouse(warehouse) {
+            currentWarehouse = warehouse;
+            
+            // Update tab styling
+            document.querySelectorAll('.warehouse-tab').forEach(tab => {
+                tab.classList.remove('border-indigo-600', 'text-indigo-600');
+                tab.classList.add('border-transparent', 'text-gray-600');
+            });
+            document.getElementById(`tab-${warehouse}`).classList.remove('border-transparent', 'text-gray-600');
+            document.getElementById(`tab-${warehouse}`).classList.add('border-indigo-600', 'text-indigo-600');
+            
+            // Display warehouse data
+            displayWarehouseRecommendations(warehouse);
+        }
+
+        function displayWarehouseRecommendations(warehouse) {
+            if (!warehouseData || !warehouseData.by_warehouse) {
+                console.error('No warehouse data available');
+                return;
+            }
+
+            const recommendations = warehouseData.by_warehouse[warehouse] || [];
+            const summary = warehouseData.summary_by_warehouse[warehouse] || {};
+            
+            // Update summary cards
+            document.getElementById('wh-critical-count').textContent = summary.critical || 0;
+            document.getElementById('wh-urgent-count').textContent = summary.urgent || 0;
+            document.getElementById('wh-orders-needed').textContent = summary.orders_needed || 0;
+            document.getElementById('wh-total-units').textContent = Math.round(summary.total_order_value || 0);
+            
+            // Populate table
+            const tbody = document.getElementById('warehouse-table-body');
+            tbody.innerHTML = '';
+            
+            if (recommendations.length === 0) {
+                document.getElementById('wh-no-recommendations').classList.remove('hidden');
+                return;
+            }
+            
+            document.getElementById('wh-no-recommendations').classList.add('hidden');
+            
+            recommendations.forEach(item => {
+                const row = document.createElement('tr');
+                
+                // Urgency badge
+                let urgencyBadge = '';
+                if (item.urgency === 'CRITICAL') {
+                    urgencyBadge = '<span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800 font-bold">🚨 CRITICAL</span>';
+                } else if (item.urgency === 'URGENT') {
+                    urgencyBadge = '<span class="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800 font-bold">⚠️ URGENT</span>';
+                } else if (item.urgency === 'SOON') {
+                    urgencyBadge = '<span class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800 font-bold">⏰ SOON</span>';
+                } else {
+                    urgencyBadge = '<span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">✅ OK</span>';
+                }
+                
+                row.innerHTML = `
+                    <td class="px-4 py-3 text-sm font-medium text-gray-900">${item.sku}</td>
+                    <td class="px-4 py-3 text-center">${urgencyBadge}</td>
+                    <td class="px-4 py-3 text-right text-sm text-gray-700">${Math.round(item.current_stock)}</td>
+                    <td class="px-4 py-3 text-right text-sm text-gray-700">${item.scaled_velocity.toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right text-sm text-gray-700">${Math.round(item.reorder_point)}</td>
+                    <td class="px-4 py-3 text-right text-sm font-bold ${item.order_quantity > 0 ? 'text-blue-700' : 'text-green-700'}">
+                        ${item.order_quantity > 0 ? Math.round(item.order_quantity) : '-'}
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Update calculateAnalysis to show warehouse toggle button after successful calculation
+        const originalCalculateAnalysis = calculateAnalysis;
+        calculateAnalysis = async function() {
+            await originalCalculateAnalysis();
+            
+            // Show the warehouse toggle button after successful analysis
+            if (recommendationsData && recommendationsData.success) {
+                document.getElementById('toggle-warehouse-btn').style.display = 'inline-block';
+            }
+        };
 
     </script>
 </body>
