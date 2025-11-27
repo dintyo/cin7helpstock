@@ -932,92 +932,48 @@ def get_period_analysis():
 
 @app.route('/api/stock/current')
 def get_current_stock():
-    """Get current stock levels calculated from orders data (like example app)"""
+    """Get current stock levels from CIN7 live sync"""
     try:
-        conn = get_db()
-        cursor = conn.cursor()
+        # Sync stock from CIN7 to get latest data
+        stock_result = cin7_client.sync_stock_from_cin7()
         
-        # Calculate stock on hand using the example app's proven method:
-        # Stock = Total Sales (we track customer orders) - (we don't track arrivals yet)
-        # Since we only have sales data, we'll need to calculate differently
+        if not stock_result.get('success'):
+            return jsonify({
+                'success': False,
+                'error': 'Failed to fetch stock from CIN7',
+                'details': stock_result.get('error')
+            }), 500
         
-        # For now, let's calculate based on our sales velocity and assume starting stock
-        # This is a simplified approach until we implement arrivals tracking
+        # Get aggregated stock levels (backward compatible)
+        stock_levels = stock_result.get('stock_levels', {})
         
-        # Get selected SKUs for analysis
+        # Get selected SKUs for filtering
         selected_skus = get_selected_skus()
         
-        if not selected_skus:
-            # Fallback to OB families if no selection
+        if selected_skus:
+            # Filter to only selected SKUs
+            filtered_stock = {sku: stock_levels.get(sku, 0) for sku in selected_skus if sku in stock_levels}
+        else:
+            # Return all stock for core SKU families
+            conn = get_db()
+            cursor = conn.cursor()
+            
             cursor.execute('''
-                SELECT 
-                    sku,
-                    SUM(quantity) as total_sold,
-                    COUNT(*) as order_count,
-                    MIN(booking_date) as first_sale,
-                    MAX(booking_date) as last_sale
+                SELECT DISTINCT sku
                 FROM orders 
                 WHERE sku LIKE 'OBMT%' OR sku LIKE 'OB-ORG-%' OR sku LIKE 'OB-ESS-%' OR sku LIKE 'OB-MAX-%' OR sku = 'OBP'
-                GROUP BY sku
-                ORDER BY sku
             ''')
-        else:
-            # Use selected SKUs
-            placeholders = ','.join(['?' for _ in selected_skus])
-            query = f'''
-                SELECT 
-                    sku,
-                    SUM(quantity) as total_sold,
-                    COUNT(*) as order_count,
-                    MIN(booking_date) as first_sale,
-                    MAX(booking_date) as last_sale
-                FROM orders 
-                WHERE sku IN ({placeholders})
-                GROUP BY sku
-                ORDER BY sku
-            '''
-            cursor.execute(query, tuple(selected_skus))
-        
-        stock_data = {}
-        
-        # Real stock levels from Cin7 (via /ref/ProductAvailability)
-        real_cin7_stock = {
-            'OB-ESS-S': 0.0,      # Out of stock (confirmed)
-            'OB-ORG-Q': 184.0,    # Good stock
-            'OB-ORG-K': 137.0,    # Good stock
-            'OB-ESS-KS': 2.0,     # Very low (almost out)
-            'OB-ORG-KS': 13.0,    # Low stock
-            'OB-ESS-D': 99.0,     # Good stock
-            'OB-ESS-Q': 267.0,    # Good stock
-            'OB-ESS-K': 326.0,    # Excellent stock
-            'OB-ESS-LS': 54.0,    # Good stock
-            'OB-ORG-S': 9.0,      # Low stock
-            'OB-ORG-LS': 25.0,    # Moderate stock
-            'OB-ORG-D': 51.0,     # Moderate stock
-        }
-        
-        for row in cursor.fetchall():
-            sku = row['sku']
-            # Use real Cin7 stock levels instead of calculations
-            current_stock = real_cin7_stock.get(sku, 0)
-            stock_data[sku] = current_stock
-        
-        # Get list of SKUs from query param or return all
-        skus = request.args.get('skus', '').split(',') if request.args.get('skus') else []
-        
-        if skus:
-            filtered_stock = {sku: stock_data.get(sku, 0) for sku in skus if sku}
-        else:
-            filtered_stock = stock_data
-        
-        conn.close()
+            
+            core_skus = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            
+            filtered_stock = {sku: stock_levels.get(sku, 0) for sku in core_skus}
         
         return jsonify({
             'success': True,
             'stock_levels': filtered_stock,
-            'source': 'cin7_real_data',
-            'note': 'Real stock levels from Cin7 /ref/ProductAvailability endpoint',
-            'total_skus': len(stock_data),
+            'source': 'cin7_live',
+            'total_skus': len(filtered_stock),
             'timestamp': datetime.now().isoformat()
         })
         
